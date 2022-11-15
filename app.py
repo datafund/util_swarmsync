@@ -1,5 +1,11 @@
 #!/usr/bin/env python3
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import os
+import asyncio
+import aiohttp
+import aiofiles
+import mimetypes
+from tqdm import tqdm
+#from http.server import BaseHTTPRequestHandler, HTTPServer
 import time, sys, getopt, logging, os, functools, json, mimetypes
 from urllib.parse import urlparse
 from urllib.parse import parse_qs
@@ -8,7 +14,6 @@ from requests.exceptions import HTTPError
 import requests
 import argparse
 from deepdiff import DeepDiff
-import upload
 import itertools
 import asyncio
 
@@ -49,10 +54,17 @@ stamp=args.stamp
 home=Path.home() / '.swarmsync'
 ALLFILES=Path.home() / '.swarmsync/allfiles.json'
 TODO=Path.home() / '.swarmsync/todo.json'
+RESPONSES=Path.home() / '.swarmsync/responses.json'
 Path(home).mkdir(exist_ok=True)
 yes = {'yes','y', 'ye', ''}
 no = {'no','n'}
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
+def append_list(file, a_list):
+    print("Started writing list data into a json file")
+    with open(file, "a") as fp:
+        json.dump(a_list, fp)
+        print("Done appending JSON data into .json file")
 
 def write_list(file, a_list):
     print("Started writing list data into a json file")
@@ -62,7 +74,6 @@ def write_list(file, a_list):
 
 # Read list to memory
 def read_list(file):
-    # for reading also binary mode is important
     with open(file, 'r') as fp:
         n_list = json.load(fp)
         return n_list
@@ -95,32 +106,77 @@ if Path(TODO).is_file():
 else:
   write_list(TODO, jsonList)
 
-def upload_to_swarm(file):
-  print(f'file {file}')
-  basename=os.path.basename(file)
-  (MIME,_ )=mimetypes.guess_type(basename, strict=False)
-  headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": args.pin,
-          "swarm-postage-batch-id": args.stamp }
-  send_files = {'file': open(file, "rb")}
-  try:
-    response=requests.post(args.beeurl + '?name=' + basename,
-                           headers=headers, files = send_files )
-    response.raise_for_status()
-    print(response.json())
-  except HTTPError as http_err:
-    print(f'HTTP error occurred: {http_err}')
-  except Exception as err:
-      print(f'Other error occurred: {err}')
+class FileManager():
+    def __init__(self, file_name: str):
+        self.name = file_name
+        self.size = os.path.getsize(self.name)
+        self.pbar = None
+
+    def __init_pbar(self):
+        self.pbar = tqdm(
+            total=self.size,
+            desc=self.name,
+            unit='B',
+            unit_scale=True,
+            unit_divisor=1024,
+            colour='#ff8c00',
+            leave=True)
+
+    async def file_reader(self):
+        self.__init_pbar()
+        chunk_size = 64*1024
+        async with aiofiles.open(self.name, 'rb') as f:
+            chunk = await f.read(chunk_size)
+            while chunk:
+                self.pbar.update(chunk_size)
+                yield chunk
+                chunk = await f.read(chunk_size)
+            self.pbar.close()
+
+
+async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
+    global scheduled
+    (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
+    headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
+            "swarm-postage-batch-id": stamp }
+    try:
+        async with sem, session.post(url + '?name=' + os.path.basename(file.name),
+                                headers=headers, data=file.file_reader()) as res:
+            scheduled.remove(file.name)
+            if 200 <= res.status <= 300:
+              response = await res.json()
+              ref = response['reference']
+              if os.path.exists(RESPONSES):
+                resp_list = read_list(RESPONSES)
+              else:
+                resp_list = {}
+              resp_list= {"file": file.name, "reference": ref }
+              append_list(RESPONSES, resp_list)
+            else:
+              print(res.status)
+            return res
+    except Exception as e:
+        # handle error(s) according to your needs
+        print(e)
+    finally:
+        sem.release()
+
+async def async_upload(scheduled):
+    scheduled = [FileManager(file) for file in scheduled]
+    sem = asyncio.Semaphore(args.count)
+    async with sem, aiohttp.ClientSession() as session:
+        res = await asyncio.gather(*[upload(file, url, session, sem) for file in scheduled])
+    print(f'items uploaded ({len(res)})')
 
 listlen=len(todo)
-print(listlen)
-count = 1
-for x in range(0,listlen,1):
-  if count > args.count:
-    time.sleep(5)
-    print('waiting')
-  print(todo[x]['file'])
-  count += 1
-  asyncio.run(upload.async_upload(todo[x]['file']))
-  #  upload_to_swarm(x['file'])
-  #  asyncio.run(async_upload(x['file'])
+print('\n\n\n')
+scheduled=[]
+for x in todo:
+  scheduled.append(x['file'])
+
+asyncio.run(async_upload(scheduled))
+#if __name__ == "__main__":
+#    loop = asyncio.get_event_loop()
+#    loop.run_until_complete(async_upload(scheduled))
+#    loop.close()
+
