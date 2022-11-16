@@ -149,10 +149,8 @@ class FileManager():
             self.pbar.close()
 
 def response_dict(a_dict):
-  print(f'response_dict handling {a_dict}')
   l_dict = [a_dict]
   o_dict = read_dict(RESPONSES)
-  print(type(o_dict))
   if o_dict is not None:
     o_dict.append(a_dict)
     write_dict(RESPONSES, str(o_dict).replace("'",'"'))
@@ -176,6 +174,11 @@ async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, se
             else:
               print(res.status)
             response_dict(resp_dict)
+            # if we have a reference we can asume upload was sucess
+            # so remove from todo list
+            if len(ref) == 64:
+              todo.remove({"file": file.name })
+              write_list(TODO, todo)
             return res
     except Exception as e:
         # handle error(s) according to your needs
@@ -190,6 +193,18 @@ async def async_upload(scheduled):
         res = await asyncio.gather(*[upload(file, url, session, sem) for file in scheduled])
     print(f'items uploaded ({len(res)})')
 
+
+def cleanup(file):
+  #sanitze responses if there was a failure
+  clean = read_dict(file)
+  print(type(clean))
+  if clean is not None:
+    clean = str_list = list(filter(None, clean))
+    write_dict(file, str(clean).replace("'",'"'))
+
+
+
+cleanup(RESPONSES)
 todo = read_dict(TODO)
 listlen=len(todo)
 print('\n\n\n')
@@ -202,4 +217,4 @@ asyncio.run(async_upload(scheduled))
 #    loop = asyncio.get_event_loop()
 #    loop.run_until_complete(async_upload(scheduled))
 #    loop.close()
-
+cleanup(RESPONSES)
