@@ -172,7 +172,7 @@ async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, se
             if 200 <= res.status <= 300:
               response = await res.json()
               ref = response['reference']
-              resp_dict = {"file": file.name, "reference": ref }
+              resp_dict = { "item": [ { "file": file.name, "reference": ref, } ] }
             else:
               print(res.status)
             response_dict(resp_dict)
