@@ -134,8 +134,18 @@ class FileManager():
             self.pbar.close()
 
 
+def response_list(a_list):
+  print(f'response_list handling {a_list}')
+  if os.path.exists(RESPONSES):
+    o_list = read_list(RESPONSES)
+  else:
+    o_list = []
+  o_list.append(a_list)
+  write_list(RESPONSES, o_list)
+
 async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled
+    resp_list = []
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
             "swarm-postage-batch-id": stamp }
@@ -146,12 +156,8 @@ async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, se
             if 200 <= res.status <= 300:
               response = await res.json()
               ref = response['reference']
-              if os.path.exists(RESPONSES):
-                resp_list = read_list(RESPONSES)
-              else:
-                resp_list = {}
-              resp_list= {"file": file.name, "reference": ref }
-              append_list(RESPONSES, resp_list)
+              resp_list.append({"file": file.name, "reference": ref },)
+#              append_list(RESPONSES, resp_list)
             else:
               print(res.status)
             return res
@@ -159,6 +165,7 @@ async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, se
         # handle error(s) according to your needs
         print(e)
     finally:
+        response_list(resp_list)
         sem.release()
 
 async def async_upload(scheduled):
