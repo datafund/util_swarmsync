@@ -188,6 +188,16 @@ def upload():
   prepare()
   main()
 
+def show():
+  TODO=Path.home() / '.swarmsync/todo.json'
+  RESPONSES=Path.home() / '.swarmsync/responses.json'
+  if 'todo' in args.s:
+    get = read_dict(TODO)
+    print(json.dumps(get, indent=4))
+  if 'responses' in args.s:
+    get = read_dict(RESPONSES)
+    print(json.dumps(get, indent=4))
+
 #if __name__ == "__main__":
     #sys.exit(main())
 
@@ -196,6 +206,10 @@ parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 parser_upload = subparsers.add_parser('upload', help='upload help')
 parser_show = subparsers.add_parser('show', help='show help')
+parser_show.add_argument('s', type=str, help = """enter string what to show.
+                         options: todo, responses""", choices=['todo', 'responses'],
+                         metavar='<name_of_list>', default='responses')
+parser_show.set_defaults(func=show)
 # Adding optional argument
 parser_upload.add_argument("-p", "--path",type=str, help = "path to upload", default=".")
 parser_upload.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/bzz")
