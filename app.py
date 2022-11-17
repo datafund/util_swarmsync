@@ -10,48 +10,6 @@ import argparse
 import itertools
 import asyncio
 
-# Initialize parser
-parser = argparse.ArgumentParser()
-# Adding optional argument
-parser.add_argument("-p", "--path",type=str, help = "path to upload", default=".")
-parser.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/bzz")
-parser.add_argument("-c", "--count", type=int, help = "number of concurrent uploads", default=5)
-parser.add_argument("-s", "--search", type=str, help = "search param(* or *.jpg or somename.txt", default="*.*")
-parser.add_argument("-S", "--stamp", type=str, help = "bee batch", default="57819a5ac47d3a8bd4a9817c23a40e2105e27fcb9c1073e53a490a562879e0c9")
-parser.add_argument("-P", "--pin", type=str, help = "pin", default="False")
-
-# Read arguments from command line
-if len(sys.argv)==1:
-    parser.print_help(sys.stderr)
-    sys.exit(1)
-args = parser.parse_args()
-
-if args.path:
-    print ("path: ", args.path)
-if args.count:
-    print ("count: ", args.count)
-if args.search:
-    print ("search: ", args.search)
-if args.stamp:
-    print ("stamp: ", args.stamp)
-if args.pin:
-    print ("pin: ", args.pin)
-if args.beeurl:
-#    args.beeurl = os.path.join(args.beeurl, '')
-    print ("url: ", args.beeurl)
-
-url=args.beeurl
-pin=args.pin
-stamp=args.stamp
-home=Path.home() / '.swarmsync'
-ALLFILES=Path.home() / '.swarmsync/allfiles.json'
-TODO=Path.home() / '.swarmsync/todo.json'
-RESPONSES=Path.home() / '.swarmsync/responses.json'
-Path(home).mkdir(exist_ok=True)
-yes = {'yes','y', 'ye', ''}
-no = {'no','n'}
-logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-
 def append_list(file, a_list):
     with open(file, "a") as fp:
         json.dump(a_list, fp)
@@ -83,31 +41,44 @@ def read_dict(file):
 
 class Object:
     def toJSON(self):
-        return json.dump(self, default=lambda o: o.__dict__, 
+        return json.dump(self, default=lambda o: o.__dict__,
             sort_keys=True, indent=4)
 
-FILES=sorted(list(filter(lambda x: x.is_file(), Path(args.path).rglob(args.search))))
-jsonList = []
-for f in FILES:
-    jsonList.append({ "file": str(os.fspath(f))})
+def prepare():
+  global url,pin,stamp,home,ALLFILES,TODO,RESPONSES,todo
+  url=args.beeurl
+  pin=args.pin
+  stamp=args.stamp
+  home=Path.home() / '.swarmsync'
+  ALLFILES=Path.home() / '.swarmsync/allfiles.json'
+  TODO=Path.home() / '.swarmsync/todo.json'
+  RESPONSES=Path.home() / '.swarmsync/responses.json'
+  Path(home).mkdir(exist_ok=True)
+  yes = {'yes','y', 'ye', ''}
+  no = {'no','n'}
 
-if Path(ALLFILES).is_file():
-  oldList = read_dict(ALLFILES)
-  if jsonList != oldList:
-    print('New files list differs from the old..')
-    choice = input('Do you want to overwrite list and todo ? [Y]es/[n]o:').lower()
-    if choice in yes:
-      write_list(ALLFILES, jsonList)
-      write_list(TODO, jsonList)
-else:
-  write_list(ALLFILES, jsonList)
-  print("same files. lets continue...\n")
-
-if Path(TODO).is_file():
-  todo = read_dict(TODO)
-  print ('todo exists. lets continue...')
-else:
-  write_list(TODO, jsonList)
+  FILES=sorted(list(filter(lambda x: x.is_file(), Path(args.path).rglob(args.search))))
+  jsonList = []
+  for f in FILES:
+      jsonList.append({ "file": str(os.fspath(f))})
+  
+  if Path(ALLFILES).is_file():
+    oldList = read_dict(ALLFILES)
+    if jsonList != oldList:
+      print('New files list differs from the old..')
+      choice = input('Do you want to overwrite list and todo ? [Y]es/[n]o:').lower()
+      if choice in yes:
+        write_list(ALLFILES, jsonList)
+        write_list(TODO, jsonList)
+  else:
+    write_list(ALLFILES, jsonList)
+    print("same files. lets continue...\n")
+  
+  if Path(TODO).is_file():
+    todo = read_dict(TODO)
+    print ('todo exists. lets continue...')
+  else:
+    write_list(TODO, jsonList)
 
 class FileManager():
     def __init__(self, file_name: str):
@@ -145,8 +116,7 @@ def response_dict(a_dict):
   else:
     write_dict(RESPONSES, str(l_dict).replace("'",'"'))
 
-async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
-    global scheduled
+async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     resp_dict = []
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
@@ -178,7 +148,7 @@ async def async_upload(scheduled):
     scheduled = [FileManager(file) for file in scheduled]
     sem = asyncio.Semaphore(args.count)
     async with sem, aiohttp.ClientSession() as session:
-        res = await asyncio.gather(*[upload(file, url, session, sem) for file in scheduled])
+        res = await asyncio.gather(*[aioupload(file, url, session, sem) for file in scheduled])
     print(f'items uploaded ({len(res)})')
 
 
@@ -189,19 +159,59 @@ def cleanup(file):
     clean = str_list = list(filter(None, clean))
     write_dict(file, str(clean).replace("'",'"'))
 
+def main():
+  global scheduled
+  cleanup(RESPONSES)
+  todo = read_dict(TODO)
+  listlen=len(todo)
+  print('\n\n\n')
+  scheduled=[]
+  for x in todo:
+    scheduled.append(x['file'])
+  asyncio.run(async_upload(scheduled))
+  cleanup(RESPONSES)
 
+def upload():
+  if args.path:
+      print ("path: ", args.path)
+  if args.count:
+      print ("count: ", args.count)
+  if args.search:
+      print ("search: ", args.search)
+  if args.stamp:
+      print ("stamp: ", args.stamp)
+  if args.pin:
+      print ("pin: ", args.pin)
+  if args.beeurl:
+  #    args.beeurl = os.path.join(args.beeurl, '')
+      print ("url: ", args.beeurl)
+  prepare()
+  main()
 
-cleanup(RESPONSES)
-todo = read_dict(TODO)
-listlen=len(todo)
-print('\n\n\n')
-scheduled=[]
-for x in todo:
-  scheduled.append(x['file'])
-
-asyncio.run(async_upload(scheduled))
 #if __name__ == "__main__":
-#    loop = asyncio.get_event_loop()
-#    loop.run_until_complete(async_upload(scheduled))
-#    loop.close()
-cleanup(RESPONSES)
+    #sys.exit(main())
+
+# Initialize parser
+parser = argparse.ArgumentParser()
+subparsers = parser.add_subparsers()
+parser_upload = subparsers.add_parser('upload', help='upload help')
+parser_show = subparsers.add_parser('show', help='show help')
+# Adding optional argument
+parser_upload.add_argument("-p", "--path",type=str, help = "path to upload", default=".")
+parser_upload.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/bzz")
+parser_upload.add_argument("-c", "--count", type=int, help = "number of concurrent uploads", default=5)
+parser_upload.add_argument("-s", "--search", type=str, help = "search param(* or *.jpg or somename.txt", default="*.*")
+parser_upload.add_argument("-S", "--stamp", type=str, help = "bee batch", default="57819a5ac47d3a8bd4a9817c23a40e2105e27fcb9c1073e53a490a562879e0c9")
+parser_upload.add_argument("-P", "--pin", type=str, help = "pin", default="False")
+parser_upload.set_defaults(func=upload)
+
+if len(sys.argv)==1:
+  parser.print_help(sys.stderr)
+  sys.exit(1)
+
+args = parser.parse_args()
+if args.func:
+    args.func()
+
+logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
