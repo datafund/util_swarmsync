@@ -15,6 +15,7 @@ home=Path.home() / '.swarmsync'
 ALLFILES=Path.home() / '.swarmsync/allfiles.json'
 TODO=Path.home() / '.swarmsync/todo.json'
 RESPONSES=Path.home() / '.swarmsync/responses.json'
+RETRIEVABLE=Path.home() / '.swarmsync/retrievable.json'
 Path(home).mkdir(exist_ok=True)
 
 def append_list(file, a_list):
@@ -101,14 +102,31 @@ class FileManager():
                 chunk = await f.read(chunk_size)
             self.pbar.close()
 
-def response_dict(a_dict):
+def response_dict(file, a_dict):
   l_dict = [a_dict]
-  o_dict = read_dict(RESPONSES)
+  o_dict = read_dict(file)
   if o_dict is not None:
     o_dict.append(a_dict)
-    write_dict(RESPONSES, str(o_dict).replace("'",'"'))
+    write_dict(file, str(o_dict).replace("'",'"'))
   else:
-    write_dict(RESPONSES, str(l_dict).replace("'",'"'))
+    write_dict(file, str(l_dict).replace("'",'"'))
+
+async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
+    resp_dict = []
+    try:
+        async with sem, session.get(url + ref) as res:
+            if 200 <= res.status <= 300:
+              response = await res.json()
+              result = response['isRetrievable']
+              quoted_result = f'{result}'
+              resp_dict = { "item": [ { "reference": ref, "isRetrievable": quoted_result, } ] }
+            response_dict(RETRIEVABLE, resp_dict)
+            return res
+    except Exception as e:
+        # handle error(s) according to your needs
+        print(e)
+    finally:
+        sem.release()
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     resp_dict = []
@@ -125,7 +143,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
               resp_dict = { "item": [ { "file": file.name, "reference": ref, } ] }
             #else:
               #print(res.status)
-            response_dict(resp_dict)
+            response_dict(RESPONSES, resp_dict)
             # if we have a reference we can asume upload was sucess
             # so remove from todo list
             if len(ref) == 64:
@@ -138,6 +156,12 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     finally:
         sem.release()
 
+async def async_check(scheduled):
+    sem = asyncio.Semaphore(args.count)
+    async with sem, aiohttp.ClientSession() as session:
+        res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
+    print(f'items checked ({len(res)})')
+
 async def async_upload(scheduled):
     scheduled = [FileManager(file) for file in scheduled]
     sem = asyncio.Semaphore(args.count)
@@ -145,17 +169,23 @@ async def async_upload(scheduled):
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file in scheduled])
     print(f'items uploaded ({len(res)})')
 
+def lst_to_dict(lst):
+    res_dct = {}
+    length=len(lst)
+    for x in range(length):
+        jsd=json.dumps(lst[x])
+        res_dct[jsd]=jsd
+    return res_dct
 
 def clean_responses():
     get = read_dict(RESPONSES)
-    print(type(get))
-    print("Original List: ", json.dumps(get))
-    clean=lst_to_dict(get)
-    clean=clean.values()
-    clean=str(clean).replace("dict_values(", '')
-    clean=str(clean).replace(")", '')
-    clean=str(clean).replace("'", "")
-    write_dict(RESPONSES, clean)
+    if get:
+      clean=lst_to_dict(get)
+      clean=clean.values()
+      clean=str(clean).replace("dict_values(", '')
+      clean=str(clean).replace(")", '')
+      clean=str(clean).replace("'", "")
+      write_dict(RESPONSES, clean)
 
 def cleanup(file):
     #sanitze responses if there was a failure
@@ -166,10 +196,9 @@ def cleanup(file):
     clean_responses();
 
 def main():
-    global scheduled
+    global scheduled,todo
     cleanup(RESPONSES)
     todo = read_dict(TODO)
-    listlen=len(todo)
     print('\n\n\n')
     scheduled=[]
     for x in todo:
@@ -202,13 +231,21 @@ def show():
       get = read_dict(RESPONSES)
       print(json.dumps(get, indent=4))
 
-def lst_to_dict(lst):
-    res_dct = {}
-    length=len(lst)
-    for x in range(length):
-        jsd=json.dumps(lst[x])
-        res_dct[jsd]=jsd
-    return res_dct
+def check():
+    global url
+    url=args.beeurl
+    if args.count:
+      print ("count: ", args.count)
+    if args.beeurl:
+      args.beeurl = os.path.join(args.beeurl, '')
+      print ("url: ", args.beeurl)
+    global scheduled
+    checklist = read_dict(RESPONSES)
+    scheduled=[]
+    for x in checklist:
+        for y in x['item']:
+          scheduled.append(y['reference'])
+    asyncio.run(async_check(scheduled))
 
 # Initialize parser
 parser = argparse.ArgumentParser()
@@ -220,8 +257,13 @@ parser_show.add_argument('s', type=str, help = """enter string string name to di
                          metavar='<name_of_list>', default='responses')
 parser_show.set_defaults(func=show)
 
-parser_test = subparsers.add_parser('test', help='test')
-parser_test.set_defaults(func=test)
+#parser_test = subparsers.add_parser('test', help='test')
+#parser_test.set_defaults(func=test)
+
+parser_check = subparsers.add_parser('check', help='check stewardship of references')
+parser_check.set_defaults(func=check)
+parser_check.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/stewardship")
+parser_check.add_argument("-c", "--count", type=int, help = "number of concurrent uploads", default=5)
 
 parser_upload = subparsers.add_parser('upload', help='upload help')
 parser_upload.add_argument("-p", "--path",type=str, help = "path to upload", default=".")
