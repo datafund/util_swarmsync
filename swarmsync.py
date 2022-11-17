@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from _version import __version__
 import aiohttp
 import aiofiles
 import mimetypes
@@ -250,6 +251,9 @@ def check():
 # Initialize parser
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
+
+parser.add_argument('-v', '--version', action='version',
+                    version='%(prog)s {version}'.format(version=__version__))
 
 parser_show = subparsers.add_parser('show', help='print values of todo or responses')
 parser_show.add_argument('s', type=str, help = """enter string string name to display.
