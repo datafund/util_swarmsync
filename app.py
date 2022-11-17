@@ -10,6 +10,13 @@ import argparse
 import itertools
 import asyncio
 
+### init paths and homedir
+home=Path.home() / '.swarmsync'
+ALLFILES=Path.home() / '.swarmsync/allfiles.json'
+TODO=Path.home() / '.swarmsync/todo.json'
+RESPONSES=Path.home() / '.swarmsync/responses.json'
+Path(home).mkdir(exist_ok=True)
+
 def append_list(file, a_list):
     with open(file, "a") as fp:
         json.dump(a_list, fp)
@@ -45,15 +52,10 @@ class Object:
             sort_keys=True, indent=4)
 
 def prepare():
-  global url,pin,stamp,home,ALLFILES,TODO,RESPONSES,todo
+  global url,pin,stamp
   url=args.beeurl
   pin=args.pin
   stamp=args.stamp
-  home=Path.home() / '.swarmsync'
-  ALLFILES=Path.home() / '.swarmsync/allfiles.json'
-  TODO=Path.home() / '.swarmsync/todo.json'
-  RESPONSES=Path.home() / '.swarmsync/responses.json'
-  Path(home).mkdir(exist_ok=True)
   yes = {'yes','y', 'ye', ''}
   no = {'no','n'}
 
@@ -189,8 +191,6 @@ def upload():
   main()
 
 def show():
-  TODO=Path.home() / '.swarmsync/todo.json'
-  RESPONSES=Path.home() / '.swarmsync/responses.json'
   if 'todo' in args.s:
     get = read_dict(TODO)
     print(json.dumps(get, indent=4))
