@@ -30,14 +30,6 @@ def write_dict(file, a_dict):
         f.write(str(a_dict))
 
 # Read list to memory
-def read_list(file):
-    try:
-        with open(file, 'r') as fp:
-            n_list = json.loads(fp)
-            return n_list
-    except OSError:
-        return None
-
 def read_dict(file):
     try:
         with open(file, 'r') as fp:
@@ -63,7 +55,7 @@ def prepare():
   jsonList = []
   for f in FILES:
       jsonList.append({ "file": str(os.fspath(f))})
-  
+
   if Path(ALLFILES).is_file():
     oldList = read_dict(ALLFILES)
     if jsonList != oldList:
@@ -75,7 +67,7 @@ def prepare():
   else:
     write_list(ALLFILES, jsonList)
     print("same files. lets continue...\n")
-  
+
   if Path(TODO).is_file():
     todo = read_dict(TODO)
     print ('todo exists. lets continue...')
@@ -154,63 +146,84 @@ async def async_upload(scheduled):
     print(f'items uploaded ({len(res)})')
 
 
+def clean_responses():
+    get = read_dict(RESPONSES)
+    print(type(get))
+    print("Original List: ", json.dumps(get))
+    clean=lst_to_dict(get)
+    clean=clean.values()
+    clean=str(clean).replace("dict_values(", '')
+    clean=str(clean).replace(")", '')
+    clean=str(clean).replace("'", "")
+    write_dict(RESPONSES, clean)
+
 def cleanup(file):
-  #sanitze responses if there was a failure
-  clean = read_dict(file)
-  if clean is not None:
-    clean = str_list = list(filter(None, clean))
-    write_dict(file, str(clean).replace("'",'"'))
+    #sanitze responses if there was a failure
+    clean = read_dict(file)
+    if clean is not None:
+      clean = str_list = list(filter(None, clean))
+      write_dict(file, str(clean).replace("'",'"'))
+    clean_responses();
 
 def main():
-  global scheduled
-  cleanup(RESPONSES)
-  todo = read_dict(TODO)
-  listlen=len(todo)
-  print('\n\n\n')
-  scheduled=[]
-  for x in todo:
-    scheduled.append(x['file'])
-  asyncio.run(async_upload(scheduled))
-  cleanup(RESPONSES)
+    global scheduled
+    cleanup(RESPONSES)
+    todo = read_dict(TODO)
+    listlen=len(todo)
+    print('\n\n\n')
+    scheduled=[]
+    for x in todo:
+      scheduled.append(x['file'])
+    asyncio.run(async_upload(scheduled))
+    cleanup(RESPONSES)
 
 def upload():
-  if args.path:
-      print ("path: ", args.path)
-  if args.count:
-      print ("count: ", args.count)
-  if args.search:
-      print ("search: ", args.search)
-  if args.stamp:
-      print ("stamp: ", args.stamp)
-  if args.pin:
-      print ("pin: ", args.pin)
-  if args.beeurl:
-  #    args.beeurl = os.path.join(args.beeurl, '')
-      print ("url: ", args.beeurl)
-  prepare()
-  main()
+    if args.path:
+        print ("path: ", args.path)
+    if args.count:
+        print ("count: ", args.count)
+    if args.search:
+        print ("search: ", args.search)
+    if args.stamp:
+        print ("stamp: ", args.stamp)
+    if args.pin:
+        print ("pin: ", args.pin)
+    if args.beeurl:
+    #    args.beeurl = os.path.join(args.beeurl, '')
+        print ("url: ", args.beeurl)
+    prepare()
+    main()
 
 def show():
-  if 'todo' in args.s:
-    get = read_dict(TODO)
-    print(json.dumps(get, indent=4))
-  if 'responses' in args.s:
-    get = read_dict(RESPONSES)
-    print(json.dumps(get, indent=4))
+    if 'todo' in args.s:
+      get = read_dict(TODO)
+      print(json.dumps(get, indent=4))
+    if 'responses' in args.s:
+      get = read_dict(RESPONSES)
+      print(json.dumps(get, indent=4))
 
-#if __name__ == "__main__":
-    #sys.exit(main())
+def lst_to_dict(lst):
+    res_dct = {}
+    length=len(lst)
+    for x in range(length):
+        jsd=json.dumps(lst[x])
+        res_dct[jsd]=jsd
+    return res_dct
 
 # Initialize parser
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
-parser_upload = subparsers.add_parser('upload', help='upload help')
-parser_show = subparsers.add_parser('show', help='show help')
-parser_show.add_argument('s', type=str, help = """enter string what to show.
+
+parser_show = subparsers.add_parser('show', help='print values of todo or responses')
+parser_show.add_argument('s', type=str, help = """enter string string name to display.
                          options: todo, responses""", choices=['todo', 'responses'],
                          metavar='<name_of_list>', default='responses')
 parser_show.set_defaults(func=show)
-# Adding optional argument
+
+parser_test = subparsers.add_parser('test', help='test')
+parser_test.set_defaults(func=test)
+
+parser_upload = subparsers.add_parser('upload', help='upload help')
 parser_upload.add_argument("-p", "--path",type=str, help = "path to upload", default=".")
 parser_upload.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/bzz")
 parser_upload.add_argument("-c", "--count", type=int, help = "number of concurrent uploads", default=5)
