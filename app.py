@@ -4,15 +4,11 @@ import aiofiles
 import mimetypes
 from tqdm import tqdm
 #from http.server import BaseHTTPRequestHandler, HTTPServer
-import time, sys, getopt, logging, os, functools, json, mimetypes
-from urllib.parse import urlparse
-from urllib.parse import parse_qs
+import time, sys, logging, os, json, mimetypes
 from pathlib import Path
 import argparse
-from deepdiff import DeepDiff
 import itertools
 import asyncio
-#from  jsonmerge import merge
 
 # Initialize parser
 parser = argparse.ArgumentParser()
@@ -57,22 +53,16 @@ no = {'no','n'}
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
 def append_list(file, a_list):
-    print("Started appending list data into a json file")
     with open(file, "a") as fp:
         json.dump(a_list, fp)
-        print("Done appending JSON list data into .json file")
 
 def write_list(file, a_list):
-    print("Started writing list data into a json file")
     with open(file, "w") as fp:
         json.dump(a_list, fp)
-        print("Done writing JSON list data into .json file")
 
 def write_dict(file, a_dict):
-    print("Started writing dict data into a json file")
     with open(file, "w") as f:
         f.write(str(a_dict))
-        print("Done writing JSON dict data into .json file")
 
 # Read list to memory
 def read_list(file):
@@ -81,7 +71,6 @@ def read_list(file):
             n_list = json.loads(fp)
             return n_list
     except OSError:
-        print(f"Could not open/read {file}")
         return None
 
 def read_dict(file):
@@ -90,7 +79,6 @@ def read_dict(file):
             n_list = json.load(fp)
             return n_list
     except OSError:
-        print(f"Could not open/read {file}")
         return None
 
 class Object:
@@ -171,8 +159,8 @@ async def upload(file: FileManager, url: str, session: aiohttp.ClientSession, se
               response = await res.json()
               ref = response['reference']
               resp_dict = { "item": [ { "file": file.name, "reference": ref, } ] }
-            else:
-              print(res.status)
+            #else:
+              #print(res.status)
             response_dict(resp_dict)
             # if we have a reference we can asume upload was sucess
             # so remove from todo list
@@ -197,7 +185,6 @@ async def async_upload(scheduled):
 def cleanup(file):
   #sanitze responses if there was a failure
   clean = read_dict(file)
-  print(type(clean))
   if clean is not None:
     clean = str_list = list(filter(None, clean))
     write_dict(file, str(clean).replace("'",'"'))
