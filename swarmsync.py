@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-from _version import __version__
 import aiohttp
 import aiofiles
 import mimetypes
@@ -10,6 +9,8 @@ from pathlib import Path
 import argparse
 import itertools
 import asyncio
+
+__version__ = '0.0.1'
 
 ### init paths and homedir
 home=Path.home() / '.swarmsync'
