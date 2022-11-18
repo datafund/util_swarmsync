@@ -2,7 +2,8 @@ name: Build Python Exe
 
 on:
   push:
-    branches: [ master ]
+    tags:
+      - '*'
 
 jobs:
   ubuntu-22-04:
@@ -21,6 +22,35 @@ jobs:
       with:
         name: swarmsync_${{ github.job }}
         path: dist
+    - name: version
+      run: echo "::set-output name=version::$(./dist/swarmsync --version)"
+      id: version
+    - name: Get previous tag
+      id: previousTag
+      run: |
+        name=$(git --no-pager tag --sort=creatordate --merged ${{ github.ref_name }} | tail -2 | head -1)
+        echo "previousTag: $name"
+        echo "previousTag=$name" >> $GITHUB_ENV
+
+    - name: Update CHANGELOG
+      id: changelog
+      uses: requarks/changelog-action@v1
+      with:
+        token: ${{ github.token }}
+        fromTag: ${{ github.ref_name }}
+        toTag: ${{ env.previousTag }}
+        writeToFile: false
+    - name: release
+      uses: actions/create-release@v1
+      id: create_release
+      with:
+        draft: false
+        prerelease: false
+        release_name: ${{ steps.version.outputs.version }}
+        tag_name: ${{ github.ref }}
+        body_path: ${{ steps.changelog.outputs.changes }}
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
       
   ubuntu-20-04:
     runs-on: ubuntu-20.04
@@ -55,3 +85,33 @@ jobs:
         with:
           name: swarmsync_${{ github.job }}
           path: dist
+
+  upload_artifacts:
+    steps:
+      - name: upload ubuntu 22.04 artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/swarmsync_ubuntu-22-04
+          asset_name: swarmsync_ubuntu-22-04
+          asset_content_type: application/octet-stream
+      - name: upload ubuntu 20.04 artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/swarmsync_ubuntu-20-04
+          asset_name: swarmsync_ubuntu-20-04
+          asset_content_type: application/octet-stream
+      - name: upload windows artifact
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./dist/swarmsync_windows
+          asset_name: swarmsync_windows
+          asset_content_type: application/octet-stream
