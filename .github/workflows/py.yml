@@ -22,35 +22,6 @@ jobs:
       with:
         name: swarmsync_${{ github.job }}
         path: dist
-    - name: version
-      run: echo "::set-output name=version::$(./dist/swarmsync --version)"
-      id: version
-    - name: Get previous tag
-      id: previousTag
-      run: |
-        name=$(git --no-pager tag --sort=creatordate --merged ${{ github.ref_name }} | tail -2 | head -1)
-        echo "previousTag: $name"
-        echo "previousTag=$name" >> $GITHUB_ENV
-
-    - name: Update CHANGELOG
-      id: changelog
-      uses: requarks/changelog-action@v1
-      with:
-        token: ${{ github.token }}
-        fromTag: ${{ github.ref_name }}
-        toTag: ${{ env.previousTag }}
-        writeToFile: false
-    - name: release
-      uses: actions/create-release@v1
-      id: create_release
-      with:
-        draft: false
-        prerelease: false
-        release_name: ${{ steps.version.outputs.version }}
-        tag_name: ${{ github.ref }}
-        body_path: ${{ steps.changelog.outputs.changes }}
-      env:
-        GITHUB_TOKEN: ${{ github.token }}
       
   ubuntu-20-04:
     runs-on: ubuntu-20.04
@@ -73,7 +44,7 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v2
-      - name: Test Build Python Exe
+      - name: Build Python Exe
         uses: eric2788/pyinstaller-build@master
         with:
           main: swarmsync
@@ -86,32 +57,88 @@ jobs:
           name: swarmsync_${{ github.job }}
           path: dist
 
-  upload_artifacts:
+  release:
+    needs: [ubuntu-22-04, ubuntu-20-04, windows]
+    runs-on: ubuntu-22.04
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v3
+      - name: version
+        run: | 
+          chmod +x ./swarmsync_ubuntu-22-04/swarmsync
+          VERSION=$(./swarmsync_ubuntu-22-04/swarmsync --version)
+          echo "version=$VERSION" >> GITHUB_OUTPUT
+          rm -rf swarmsync_ubuntu-22-04
+        id: version
+      - name: Get previous tag
+        id: previousTag
+        run: |
+          name=$(git --no-pager tag --sort=creatordate --merged ${{ github.ref_name }} | tail -2 | head -1)
+          echo "previousTag: $name"
+          echo "previousTag=$name" >> $GITHUB_OUTPUT
+      - name: Update CHANGELOG
+        id: changelog
+        uses: requarks/changelog-action@v1
+        with:
+          token: ${{ github.token }}
+          fromTag: ${{ github.ref_name }}
+          toTag: ${{ steps.previousTag.outputs.previousTag }}
+          writeToFile: false
+          includeInvalidCommits: true
+      - name: release
+        uses: actions/create-release@v1
+        id: create_release
+        with:
+          draft: false
+          prerelease: false
+          release_name: ${{ steps.version.outputs.version }}
+          tag_name: ${{ github.ref }}
+          body_path: ${{ steps.changelog.outputs.changes }}
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - uses: actions/download-artifact@v3
+        with:
+          name: swarmsync_ubuntu-22-04
+          path: ./
+      - name: debug
+        run: |
+          ls -lsatrh
+          ls -R
       - name: upload ubuntu 22.04 artifact
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/swarmsync_ubuntu-22-04
+          asset_path: swarmsync_ubuntu-22-04
           asset_name: swarmsync_ubuntu-22-04
           asset_content_type: application/octet-stream
+      - uses: actions/download-artifact@v3
+        with:
+          name: swarmsync_ubuntu-20-04
+          path: ./
       - name: upload ubuntu 20.04 artifact
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/swarmsync_ubuntu-20-04
+          asset_path: swarmsync_ubuntu-20-04
           asset_name: swarmsync_ubuntu-20-04
           asset_content_type: application/octet-stream
+      - uses: actions/download-artifact@v3
+        with:
+          name: swarmsync_windows
+          path: ./
       - name: upload windows artifact
-        uses: actions/upload-release-asset@v1
+        uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: ./dist/swarmsync_windows
+          asset_path: swarmsync_windows
           asset_name: swarmsync_windows
           asset_content_type: application/octet-stream
