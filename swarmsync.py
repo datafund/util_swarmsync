@@ -220,7 +220,8 @@ def upload():
     if args.pin:
         print ("pin: ", args.pin)
     if args.beeurl:
-    #    args.beeurl = os.path.join(args.beeurl, '')
+        args.beeurl = os.path.join(args.beeurl, '')
+        args.beeurl = args.beeurl + 'bzz'
         print ("url: ", args.beeurl)
     prepare()
     main()
@@ -232,6 +233,9 @@ def show():
     if 'responses' in args.s:
       get = read_dict(RESPONSES)
       print(json.dumps(get, indent=4))
+    if 'retrievable' in args.s:
+      get = read_dict(RETRIEVABLE)
+      print(json.dumps(get, indent=4))
 
 def check():
     global url
@@ -240,6 +244,7 @@ def check():
       print ("count: ", args.count)
     if args.beeurl:
       args.beeurl = os.path.join(args.beeurl, '')
+      args.beeurl = args.beeurl + 'stewardship/'
       print ("url: ", args.beeurl)
     global scheduled
     checklist = read_dict(RESPONSES)
@@ -256,27 +261,40 @@ subparsers = parser.add_subparsers()
 parser.add_argument('-v', '--version', action='version',
                     version='%(prog)s {version}'.format(version=__version__))
 
-parser_show = subparsers.add_parser('show', help='print values of todo or responses')
+parser_show = subparsers.add_parser('show',
+                                    help='print values of todo,responses or retrievables')
 parser_show.add_argument('s', type=str, help = """enter string string name to display.
-                         options: todo, responses""", choices=['todo', 'responses'],
+                         options: todo, responses, retrievable""",
+                         choices=['todo', 'responses', 'retrievable'],
                          metavar='<name_of_list>', default='responses')
 parser_show.set_defaults(func=show)
 
 #parser_test = subparsers.add_parser('test', help='test')
 #parser_test.set_defaults(func=test)
 
-parser_check = subparsers.add_parser('check', help='check stewardship of references')
+parser_check = subparsers.add_parser('check',
+                                     help='check if files can be downloaded using stewardship')
 parser_check.set_defaults(func=check)
-parser_check.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/stewardship")
-parser_check.add_argument("-c", "--count", type=int, help = "number of concurrent uploads", default=5)
+parser_check.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
+                          ie. http://0:1633""", default="http://0:1633/stewardship/")
+parser_check.add_argument("-c", "--count", type=int,
+                          help = "number of concurrent uploads", default=10)
 
-parser_upload = subparsers.add_parser('upload', help='upload help')
-parser_upload.add_argument("-p", "--path",type=str, help = "path to upload", default=".")
-parser_upload.add_argument("-u", "--beeurl", type=str, help = "beeurl", default="http://0:1633/bzz")
-parser_upload.add_argument("-c", "--count", type=int, help = "number of concurrent uploads", default=5)
-parser_upload.add_argument("-s", "--search", type=str, help = "search param(* or *.jpg or somename.txt", default="*.*")
-parser_upload.add_argument("-S", "--stamp", type=str, help = "bee batch", default="57819a5ac47d3a8bd4a9817c23a40e2105e27fcb9c1073e53a490a562879e0c9")
-parser_upload.add_argument("-P", "--pin", type=str, help = "pin", default="False")
+parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
+parser_upload.add_argument("-p", "--path",type=str,
+                           help = "enter path to folder to be uploaded.", default=".")
+parser_upload.add_argument("-u", "--beeurl", type=str, help = """enter http address of bee.
+                          ie. http://0:1633""", default="http://0:1633/bzz")
+parser_upload.add_argument("-c", "--count", type=int,
+                           help = "number of concurrent uploads", default=5)
+parser_upload.add_argument("-s", "--search", type=str,
+                           help = "search param(* or *.jpg or somename.txt", default="*.*")
+parser_upload.add_argument("-S", "--stamp", type=str,
+                           help = "enter bee stamp id",
+                           default="57819a5ac47d3a8bd4a9817c23a40e2105e27fcb9c1073e53a490a562879e0c9")
+parser_upload.add_argument("-P", "--pin", type=str,
+                           help = "should files be pinned True or False",
+                           choices=['todo', 'responses'], default="False")
 parser_upload.set_defaults(func=upload)
 
 if len(sys.argv)==1:
