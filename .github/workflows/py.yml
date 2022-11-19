@@ -71,8 +71,12 @@ jobs:
           chmod +x ./swarmsync_ubuntu-22-04/swarmsync
           VERSION=$(./swarmsync_ubuntu-22-04/swarmsync --version)
           echo "version=$VERSION" >> GITHUB_OUTPUT
-          rm -rf swarmsync_ubuntu-22-04
         id: version
+      - name: zip the artifacts
+        run: |
+          zip -r swarmsync_ubuntu-22-04 swarmsync_ubuntu-22-04
+          zip -r swarmsync_ubuntu-20-04 swarmsync_ubuntu-20-04
+          zip -r swarmsync_windows swarmsync_windows
       - name: Get previous tag
         id: previousTag
         run: |
@@ -99,46 +103,30 @@ jobs:
           body_path: ${{ steps.changelog.outputs.changes }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-      - uses: actions/download-artifact@v3
-        with:
-          name: swarmsync_ubuntu-22-04
-          path: ./
-      - name: debug
-        run: |
-          ls -lsatrh
-          ls -R
       - name: upload ubuntu 22.04 artifact
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: swarmsync_ubuntu-22-04
-          asset_name: swarmsync_ubuntu-22-04
-          asset_content_type: application/octet-stream
-      - uses: actions/download-artifact@v3
-        with:
-          name: swarmsync_ubuntu-20-04
-          path: ./
+          asset_path: swarmsync_ubuntu-22-04.zip
+          asset_name: swarmsync_ubuntu-22-04.zip
+          asset_content_type: application/zip
       - name: upload ubuntu 20.04 artifact
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: swarmsync_ubuntu-20-04
-          asset_name: swarmsync_ubuntu-20-04
-          asset_content_type: application/octet-stream
-      - uses: actions/download-artifact@v3
-        with:
-          name: swarmsync_windows
-          path: ./
+          asset_path: swarmsync_ubuntu-20-04.zip
+          asset_name: swarmsync_ubuntu-20-04.zip
+          asset_content_type: application/zip
       - name: upload windows artifact
         uses: actions/upload-release-asset@v1.0.2
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
           upload_url: ${{ steps.create_release.outputs.upload_url }}
-          asset_path: swarmsync_windows
-          asset_name: swarmsync_windows
-          asset_content_type: application/octet-stream
+          asset_path: swarmsync_windows.zip
+          asset_name: swarmsync_windows.zip
+          asset_content_type: application/zip
