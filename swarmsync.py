@@ -239,13 +239,13 @@ def show():
 
 def check():
     global url
-    url=args.beeurl
     if args.count:
       print ("count: ", args.count)
     if args.beeurl:
       args.beeurl = os.path.join(args.beeurl, '')
       args.beeurl = args.beeurl + 'stewardship/'
       print ("url: ", args.beeurl)
+    url=args.beeurl
     global scheduled
     checklist = read_dict(RESPONSES)
     scheduled=[]
