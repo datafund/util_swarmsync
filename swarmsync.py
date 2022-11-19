@@ -294,7 +294,7 @@ parser_upload.add_argument("-S", "--stamp", type=str,
                            default="57819a5ac47d3a8bd4a9817c23a40e2105e27fcb9c1073e53a490a562879e0c9")
 parser_upload.add_argument("-P", "--pin", type=str,
                            help = "should files be pinned True or False",
-                           choices=['todo', 'responses'], default="False")
+                           choices=['true', 'false'], default="False")
 parser_upload.set_defaults(func=upload)
 
 if len(sys.argv)==1:
