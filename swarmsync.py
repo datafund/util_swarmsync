@@ -4,7 +4,7 @@ import aiofiles
 import mimetypes
 from tqdm import tqdm
 #from http.server import BaseHTTPRequestHandler, HTTPServer
-import time, sys, logging, os, json, mimetypes
+import time, sys, logging, os, json, mimetypes, math
 from pathlib import Path
 import argparse
 import itertools
@@ -77,6 +77,15 @@ def prepare():
   else:
     write_list(TODO, jsonList)
 
+def convert_size(size_bytes):
+   if size_bytes == 0:
+       return "0B"
+   size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
+   i = int(math.floor(math.log(size_bytes, 1024)))
+   p = math.pow(1024, i)
+   s = round(size_bytes / p, 2)
+   return "%s %s" % (s, size_name[i])
+
 class FileManager():
     def __init__(self, file_name: str):
         self.name = file_name
@@ -103,6 +112,15 @@ class FileManager():
                 yield chunk
                 chunk = await f.read(chunk_size)
             self.pbar.close()
+
+def get_size():
+    get = read_dict(RESPONSES)
+    calc=[]
+    for x in get:
+        for y in x['item']:
+          calc.append(y['size'])
+    total = sum(calc)
+    print('Total size of uploaded data: ', convert_size(total))
 
 def response_dict(file, a_dict):
   l_dict = [a_dict]
@@ -142,7 +160,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             if 200 <= res.status <= 300:
               response = await res.json()
               ref = response['reference']
-              resp_dict = { "item": [ { "file": file.name, "reference": ref, } ] }
+              resp_dict = { "item": [ { "file": file.name, "reference": ref, "size": file.size} ] }
             #else:
               #print(res.status)
             response_dict(RESPONSES, resp_dict)
@@ -205,8 +223,13 @@ def main():
     scheduled=[]
     for x in todo:
       scheduled.append(x['file'])
+
+    start = time.time()
     asyncio.run(async_upload(scheduled))
+    end = time.time()
     cleanup(RESPONSES)
+    get_size()
+    print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
 def upload():
     if args.path:
@@ -236,6 +259,8 @@ def show():
     if 'retrievable' in args.s:
       get = read_dict(RETRIEVABLE)
       print(json.dumps(get, indent=4))
+    if 'size' in args.s:
+      get_size()
 
 def check():
     global url
@@ -265,7 +290,7 @@ parser_show = subparsers.add_parser('show',
                                     help='print values of todo,responses or retrievables')
 parser_show.add_argument('s', type=str, help = """enter string string name to display.
                          options: todo, responses, retrievable""",
-                         choices=['todo', 'responses', 'retrievable'],
+                         choices=['todo', 'responses', 'retrievable', 'size'],
                          metavar='<name_of_list>', default='responses')
 parser_show.set_defaults(func=show)
 
