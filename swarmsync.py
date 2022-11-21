@@ -10,7 +10,7 @@ import argparse
 import itertools
 import asyncio
 
-__version__ = '0.0.1'
+__version__ = '0.0.2'
 
 ### init paths and homedir
 home=Path.home() / '.swarmsync'
