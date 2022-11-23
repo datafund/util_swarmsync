@@ -100,6 +100,7 @@ jobs:
           prerelease: false
           allow_updates: true
           tag: ${{ github.ref }}
+          name: ${{ github.tag_name }}
           body: ${{ steps.changelog.outputs.changes }}
           token: ${{ secrets.GITHUB_TOKEN }}
       - name: upload ubuntu 22.04 artifact
