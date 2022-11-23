@@ -57,7 +57,7 @@ def prepare():
   FILES=sorted(list(filter(lambda x: x.is_file(), Path(args.path).rglob(args.search))))
   jsonList = []
   for f in FILES:
-      jsonList.append({ "file": str(os.fspath(f))})
+      jsonList.append({ "file": f.as_posix() })
 
   if Path(ALLFILES).is_file():
     oldList = read_dict(ALLFILES)
