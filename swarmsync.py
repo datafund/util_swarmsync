@@ -180,14 +180,16 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
 async def async_check(scheduled):
     sem = asyncio.Semaphore(args.count)
-    async with sem, aiohttp.ClientSession(timeout=3600) as session:
+    session_timeout=aiohttp.ClientTimeout(total=14400)
+    async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
     print(f'items checked ({len(res)})')
 
 async def async_upload(scheduled):
     scheduled = [FileManager(file) for file in scheduled]
     sem = asyncio.Semaphore(args.count)
-    async with sem, aiohttp.ClientSession(timeout=14400) as session:
+    session_timeout=aiohttp.ClientTimeout(total=14400)
+    async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file in scheduled])
     print(f'items uploaded ({len(res)})')
 
