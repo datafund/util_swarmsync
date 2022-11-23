@@ -151,6 +151,8 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     resp_dict = []
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
+    if MIME is None:
+        MIME = "application/octet-stream"
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
             "swarm-postage-batch-id": stamp }
     try:
