@@ -132,6 +132,7 @@ def response_dict(file, a_dict):
     write_dict(file, str(l_dict).replace("'",'"'))
 
 async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
+    global display
     resp_dict = []
     try:
         async with sem, session.get(url + ref) as res:
@@ -147,6 +148,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         print(e)
     finally:
         sem.release()
+        display.update()
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     resp_dict = []
@@ -184,10 +186,12 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         sem.release()
 
 async def async_check(scheduled):
+    global display
     sem = asyncio.Semaphore(args.count)
     session_timeout=aiohttp.ClientTimeout(total=14400)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
+    display.close()
     print(f'items checked ({len(res)})')
 
 async def async_upload(scheduled):
@@ -272,7 +276,7 @@ def show():
       get_size()
 
 def check():
-    global url
+    global url,display
     if args.count:
       print ("count: ", args.count)
     if args.beeurl:
@@ -286,6 +290,14 @@ def check():
     for x in checklist:
         for y in x['item']:
           scheduled.append(y['reference'])
+    print('\n\n\n')
+    print('Checking stewardship...')
+    display=tqdm(
+        total=len(scheduled),
+        desc='checking',
+        unit='references',
+        colour='#ff8c00',
+        leave=True)
     asyncio.run(async_check(scheduled))
 
 # Initialize parser
