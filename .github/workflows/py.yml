@@ -93,16 +93,15 @@ jobs:
           writeToFile: false
           includeInvalidCommits: true
       - name: release
-        uses: actions/create-release@v1
+        uses: ncipollo/release-action@v1.11.2
         id: create_release
         with:
           draft: false
           prerelease: false
-          release_name: ${{ steps.version.outputs.version }}
-          tag_name: ${{ github.ref }}
-          body_path: ${{ steps.changelog.outputs.changes }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          allow_updates: true
+          tag: ${{ github.ref }}
+          body: ${{ steps.changelog.outputs.changes }}
+          token: ${{ secrets.GITHUB_TOKEN }}
       - name: upload ubuntu 22.04 artifact
         uses: actions/upload-release-asset@v1.0.2
         with:
