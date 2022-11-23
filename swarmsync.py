@@ -238,8 +238,12 @@ def main():
       scheduled.append(x['file'])
 
     start = time.time()
-    asyncio.run(async_upload(scheduled))
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(async_upload(scheduled))
     end = time.time()
+    loop.run_until_complete(asyncio.sleep(0.250))
+    loop.close()
     cleanup(RESPONSES)
     get_size()
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
