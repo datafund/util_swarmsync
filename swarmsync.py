@@ -163,6 +163,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
               response = await res.json()
               ref = response['reference']
               resp_dict = { "item": [ { "file": file.name, "reference": ref, "size": file.size} ] }
+              # if we have a reference we can asume upload was sucess
+              # so remove from todo list
+              if len(ref) == 64:
+                todo.remove({"file": file.name })
+                write_list(TODO, todo)
             #else:
               #print(res.status)
             response_dict(RESPONSES, resp_dict)
