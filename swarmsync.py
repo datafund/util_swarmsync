@@ -6,6 +6,7 @@ from tqdm import tqdm
 #from http.server import BaseHTTPRequestHandler, HTTPServer
 import time, sys, logging, os, json, mimetypes, math
 from pathlib import Path
+from secrets import token_hex
 import argparse
 import itertools
 import asyncio
@@ -16,9 +17,15 @@ __version__ = '0.0.2.r2'
 home=Path.home() / '.swarmsync'
 ALLFILES=Path.home() / '.swarmsync/allfiles.json'
 TODO=Path.home() / '.swarmsync/todo.json'
+ADDRESS=Path.home() / '.swarmsync/address'
+TAG=Path.home() / '.swarmsync/tag.json'
 RESPONSES=Path.home() / '.swarmsync/responses.json'
 RETRIEVABLE=Path.home() / '.swarmsync/retrievable.json'
 Path(home).mkdir(exist_ok=True)
+yes = {'yes','y', 'ye', ''}
+no = {'no','n'}
+address=""
+tag={}
 
 def append_list(file, a_list):
     with open(file, "a") as fp:
@@ -48,11 +55,8 @@ class Object:
 
 def prepare():
   global url,pin,stamp
-  url=args.beeurl
   pin=args.pin
   stamp=args.stamp
-  yes = {'yes','y', 'ye', ''}
-  no = {'no','n'}
 
   FILES=sorted(list(filter(lambda x: x.is_file(), Path(args.path).rglob(args.search))))
   jsonList = []
@@ -155,8 +159,14 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     if MIME is None:
         MIME = "application/octet-stream"
-    headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
-            "swarm-postage-batch-id": stamp }
+
+    if tag['uid']:
+        headers={"Content-Type": MIME, "swarm-deferred-upload": "true", "swarm-pin": pin,
+                 "swarm-postage-batch-id": stamp , "swarm-tag": json.dumps(tag['uid']) }
+    else:
+        headers={"Content-Type": MIME, "swarm-deferred-upload": "true", "swarm-pin": pin,
+                 "swarm-postage-batch-id": stamp }
+
     try:
         async with sem, session.post(url + '?name=' + os.path.basename(file.name),
                                 headers=headers, data=file.file_reader()) as res:
@@ -173,11 +183,6 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             #else:
               #print(res.status)
             response_dict(RESPONSES, resp_dict)
-            # if we have a reference we can asume upload was sucess
-            # so remove from todo list
-            if len(ref) == 64:
-              todo.remove({"file": file.name })
-              write_list(TODO, todo)
             return res
     except Exception as e:
         # handle error(s) according to your needs
@@ -228,6 +233,42 @@ def cleanup(file):
       write_dict(file, str(clean).replace("'",'"'))
     clean_responses();
 
+def normalize_url(base: str, path: str):
+    global url
+    url = os.path.join(base, '')
+    url = url + path
+    return url
+
+async def check_tag(url: str, u_tag: str):
+    if not u_tag:
+        if Path(TAG).is_file():
+            tag = read_dict(TAG)
+            u_tag = str(tag['uid'])
+        else:
+            print('Error, no tag is saved')
+            quit()
+    async with aiohttp.ClientSession() as session:
+        async with session.get(url + u_tag) as resp:
+            if 200 <= resp.status <= 300:
+                tag = await resp.json()
+                print(json.dumps(tag, indent=4))
+            else:
+                print('Error in getting tag')
+
+async def get_tag(url: str, addr: str):
+    tag = {}
+    if Path(TAG).is_file():
+        tag = read_dict(TAG)
+    else:
+        params = json.dumps({ "address": addr })
+        headers = { "Content-Type": "application/json" }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(normalize_url(url, 'tags'), headers=headers, data=params) as resp:
+                if 200 <= resp.status <= 300:
+                    tag = await resp.json()
+                    write_list(TAG, tag)
+    return tag
+
 def main():
     global scheduled,todo
     cleanup(RESPONSES)
@@ -249,6 +290,7 @@ def main():
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
 def upload():
+    global tag,address
     if args.path:
         print ("path: ", args.path)
     if args.count:
@@ -259,10 +301,31 @@ def upload():
         print ("stamp: ", args.stamp)
     if args.pin:
         print ("pin: ", args.pin)
+    if args.address:
+        address=args.address
+    if args.no_tag != True:
+        if args.tag == "" or not args.tag:
+            if Path(ADDRESS).is_file() and not address:
+                address = read_dict(ADDRESS)
+                print ('using existing address')
+            else:
+                choice = input('No address detected. Create a random address ? [Y]es/[n]o:').lower()
+                if choice in yes:
+                  address = token_hex(32)
+                else:
+                  print('Error: Enter an address as argument')
+            if address:
+                tag = asyncio.run(get_tag(args.beeurl, address))
+#                write_list(TAG, json.dumps(tag))
+                write_list(ADDRESS, address)
+                print ("saving address: ", address)
+            else:
+                print('Error: could not post tag to bee without an address')
+                quit()
+    print ("TAG uid: ", tag['uid'])
     if args.beeurl:
-        args.beeurl = os.path.join(args.beeurl, '')
-        args.beeurl = args.beeurl + 'bzz'
-        print ("url: ", args.beeurl)
+        normalize_url(args.beeurl, 'bzz')
+        print ("url: ", url)
     prepare()
     main()
 
@@ -284,10 +347,13 @@ def check():
     if args.count:
       print ("count: ", args.count)
     if args.beeurl:
-      args.beeurl = os.path.join(args.beeurl, '')
-      args.beeurl = args.beeurl + 'stewardship/'
-      print ("url: ", args.beeurl)
-    url=args.beeurl
+      normalize_url(args.beeurl, 'stewardship/')
+      print ("url: ", url)
+    if args.tag or args.e:
+        print('\n\n\n')
+        asyncio.run(check_tag(normalize_url(args.beeurl, 'tags/'), args.tag))
+        quit()
+
     global scheduled
     checklist = read_dict(RESPONSES)
     scheduled=[]
@@ -323,12 +389,14 @@ parser_show.set_defaults(func=show)
 #parser_test.set_defaults(func=test)
 
 parser_check = subparsers.add_parser('check',
-                                     help='check if files can be downloaded using stewardship')
+                                     help='check if files can be downloaded using stewardship or check tag status')
 parser_check.set_defaults(func=check)
 parser_check.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
                           ie. http://0:1633""", default="http://0:1633/stewardship/")
-parser_check.add_argument("-c", "--count", type=int,
+parser_check.add_argument("-c", "--count", type=int, required=False,
                           help = "number of concurrent uploads", default=10)
+parser_check.add_argument("-e", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
+parser_check.add_argument("-t", "--tag", type=str, required=False, help="enter tag uid to fetch info about", default="")
 
 parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
 parser_upload.add_argument("-p", "--path",type=str,
@@ -345,6 +413,12 @@ parser_upload.add_argument("-S", "--stamp", type=str,
 parser_upload.add_argument("-P", "--pin", type=str,
                            help = "should files be pinned True or False",
                            choices=['true', 'false'], default="False")
+parser_upload.add_argument("-t", "--tag",
+                           help = """enter a uid tag for upload. if empty a new tag will be created.
+                                     use --no-tag if you dont want any tag.""")
+parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
+parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
+                           default="")
 parser_upload.set_defaults(func=upload)
 
 if len(sys.argv)==1:
