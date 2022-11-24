@@ -149,6 +149,24 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         sem.release()
         display.update()
 
+async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem):
+    global display
+    try:
+        async with sem, session.get(url + '/' + ref + '/') as res:
+            r_data = await res.read()
+            if not 200 <= res.status <= 201:
+                print(f"Download failed: {res.status}")
+                return res
+        async with aiofiles.open(file, mode='wb') as f:
+            await f.write(r_data)
+        return res
+    except Exception as e:
+        # handle error(s) according to your needs
+        print(e)
+    finally:
+        sem.release()
+        display.update()
+
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     resp_dict = []
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
@@ -202,6 +220,16 @@ async def async_upload(scheduled, urll):
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
     print(f'items uploaded ({len(res)})')
+
+async def async_download(references, paths, urll):
+    global display
+    l_url = list(islice(cycle(urll), len(references)))
+    sem = asyncio.Semaphore(args.count)
+    session_timeout=aiohttp.ClientTimeout(total=14400)
+    async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
+        res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem) for reference, file, url in zip(references, paths, l_url)])
+    display.close()
+    print(f'items downloaded ({len(res)})')
 
 def lst_to_dict(lst):
     res_dct = {}
@@ -311,7 +339,6 @@ def upload():
                   print('Error: Enter an address as argument')
             if address:
                 tag = asyncio.run(get_tag(args.beeurl, address))
-#                write_list(TAG, json.dumps(tag))
                 write_list(ADDRESS, address)
                 print ("saving address: ", address)
             else:
@@ -367,6 +394,41 @@ def check():
         leave=True)
     asyncio.run(async_check(scheduled, url))
 
+def download():
+    global display
+    if args.count:
+        print ("count: ", args.count)
+    if args.beeurl:
+        urls = args.beeurl.split(",")
+        for l in urls:
+            urll.append(normalize_url(l, 'bzz'))
+        print ("url: ", urll)
+    download = read_dict(RESPONSES)
+    references=[]
+    paths=[]
+    for x in download:
+        for y in x['item']:
+          references.append(y['reference'])
+          paths.append(y['file'])
+
+    display=tqdm(
+        total=len(references),
+        desc='Downloading',
+        unit='item',
+        colour='#ff8c00',
+        leave=True)
+    print('\n\n\n')
+    print('Starting download...')
+    get_size()
+    start = time.time()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    loop.run_until_complete(async_download(references, paths, urll))
+    end = time.time()
+    loop.run_until_complete(asyncio.sleep(0.250))
+    loop.close()
+    print('Time spent downloading:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
+
 # init file
 if not Path(RETRIEVABLE).is_file():
     write_dict(RETRIEVABLE, '[]')
@@ -385,6 +447,14 @@ parser_show.add_argument('s', type=str, help = """enter string string name to di
                          choices=['todo', 'responses', 'retrievable', 'size'],
                          metavar='<name_of_list>', default='responses')
 parser_show.set_defaults(func=show)
+
+parser_download = subparsers.add_parser('download',
+                                    help='download everything from responses list')
+parser_download.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
+                          ie. http://0:1633""", default="http://0:1633/stewardship/")
+parser_download.add_argument("-c", "--count", type=int, required=False,
+                          help = "number of concurrent download", default=10)
+parser_download.set_defaults(func=download)
 
 #parser_test = subparsers.add_parser('test', help='test')
 #parser_test.set_defaults(func=test)
