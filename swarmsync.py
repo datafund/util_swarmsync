@@ -1,15 +1,9 @@
 #!/usr/bin/env python3
-import aiohttp
-import aiofiles
-import mimetypes
 from tqdm import tqdm
-#from http.server import BaseHTTPRequestHandler, HTTPServer
-import time, sys, logging, os, json, mimetypes, math
+import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
+from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
-import argparse
-import itertools
-import asyncio
 
 __version__ = '0.0.3.r0'
 
@@ -26,6 +20,7 @@ yes = {'yes','y', 'ye', ''}
 no = {'no','n'}
 address=""
 tag={}
+urll=[]
 
 def append_list(file, a_list):
     with open(file, "a") as fp:
@@ -54,7 +49,7 @@ class Object:
             sort_keys=True, indent=4)
 
 def prepare():
-  global url,pin,stamp
+  global pin,stamp
   pin=args.pin
   stamp=args.stamp
 
@@ -141,11 +136,11 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
     try:
         async with sem, session.get(url + ref) as res:
             if 200 <= res.status <= 300:
-              response = await res.json()
-              result = response['isRetrievable']
-              quoted_result = f'{result}'
-              resp_dict = { "item": [ { "reference": ref, "isRetrievable": quoted_result, } ] }
-            response_dict(RETRIEVABLE, resp_dict)
+                response = await res.json()
+                result = response['isRetrievable']
+                quoted_result = f'{result}'
+                resp_dict = { "item": [ { "reference": ref, "isRetrievable": quoted_result, } ] }
+                response_dict(RETRIEVABLE, resp_dict)
             return res
     except Exception as e:
         # handle error(s) according to your needs
@@ -161,10 +156,10 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         MIME = "application/octet-stream"
 
     if tag['uid']:
-        headers={"Content-Type": MIME, "swarm-deferred-upload": "true", "swarm-pin": pin,
+        headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
                  "swarm-postage-batch-id": stamp , "swarm-tag": json.dumps(tag['uid']) }
     else:
-        headers={"Content-Type": MIME, "swarm-deferred-upload": "true", "swarm-pin": pin,
+        headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
                  "swarm-postage-batch-id": stamp }
 
     try:
@@ -190,7 +185,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     finally:
         sem.release()
 
-async def async_check(scheduled):
+async def async_check(scheduled, url: str):
     global display
     sem = asyncio.Semaphore(args.count)
     session_timeout=aiohttp.ClientTimeout(total=14400)
@@ -199,12 +194,13 @@ async def async_check(scheduled):
     display.close()
     print(f'items checked ({len(res)})')
 
-async def async_upload(scheduled):
+async def async_upload(scheduled, urll):
+    l_url = list(islice(cycle(urll), len(scheduled)))
     scheduled = [FileManager(file) for file in scheduled]
     sem = asyncio.Semaphore(args.count)
     session_timeout=aiohttp.ClientTimeout(total=14400)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
-        res = await asyncio.gather(*[aioupload(file, url, session, sem) for file in scheduled])
+        res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
     print(f'items uploaded ({len(res)})')
 
 def lst_to_dict(lst):
@@ -234,7 +230,6 @@ def cleanup(file):
     clean_responses();
 
 def normalize_url(base: str, path: str):
-    global url
     url = os.path.join(base, '')
     url = url + path
     return url
@@ -281,7 +276,7 @@ def main():
     start = time.time()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(async_upload(scheduled))
+    loop.run_until_complete(async_upload(scheduled, urll))
     end = time.time()
     loop.run_until_complete(asyncio.sleep(0.250))
     loop.close()
@@ -324,8 +319,10 @@ def upload():
                 quit()
     print ("TAG uid: ", tag['uid'])
     if args.beeurl:
-        normalize_url(args.beeurl, 'bzz')
-        print ("url: ", url)
+        urls = args.beeurl.split(",")
+        for l in urls:
+            urll.append(normalize_url(l, 'bzz'))
+        print ("url: ", urll)
     prepare()
     main()
 
@@ -347,7 +344,7 @@ def check():
     if args.count:
       print ("count: ", args.count)
     if args.beeurl:
-      normalize_url(args.beeurl, 'stewardship/')
+      url = normalize_url(args.beeurl, 'stewardship/')
       print ("url: ", url)
     if args.tag or args.e:
         print('\n\n\n')
@@ -368,7 +365,8 @@ def check():
         unit='references',
         colour='#ff8c00',
         leave=True)
-    asyncio.run(async_check(scheduled))
+    asyncio.run(async_check(scheduled, url))
+
 # init file
 if not Path(RETRIEVABLE).is_file():
     write_dict(RETRIEVABLE, '[]')
@@ -404,7 +402,7 @@ parser_check.add_argument("-t", "--tag", type=str, required=False, help="enter t
 parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
 parser_upload.add_argument("-p", "--path",type=str,
                            help = "enter path to folder to be uploaded.", default=".")
-parser_upload.add_argument("-u", "--beeurl", type=str, help = """enter http address of bee.
+parser_upload.add_argument("-u", "--beeurl", type=str, help = """enter http address of bee. separate multiple bees with comma.
                           ie. http://0:1633""", default="http://0:1633/bzz")
 parser_upload.add_argument("-c", "--count", type=int,
                            help = "number of concurrent uploads", default=5)
