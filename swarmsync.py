@@ -157,6 +157,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             if not 200 <= res.status <= 201:
                 print(f"Download failed: {res.status}")
                 return res
+            Path(file).parent.mkdir(exist_ok=True)
         async with aiofiles.open(file, mode='wb') as f:
             await f.write(r_data)
         return res
