@@ -99,6 +99,7 @@ class FileManager():
             unit_scale=True,
             unit_divisor=1024,
             colour='#ff8c00',
+            bar_format='{desc:<48.47}: {percentage:3.0f}%|{bar}{r_bar}',
             leave=True)
 
     async def file_reader(self):
