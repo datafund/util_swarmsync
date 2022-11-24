@@ -369,6 +369,9 @@ def check():
         colour='#ff8c00',
         leave=True)
     asyncio.run(async_check(scheduled))
+# init file
+if not Path(RETRIEVABLE).is_file():
+    write_dict(RETRIEVABLE, '[]')
 
 # Initialize parser
 parser = argparse.ArgumentParser()
