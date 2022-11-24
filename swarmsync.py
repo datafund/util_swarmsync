@@ -5,7 +5,7 @@ from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
 
-__version__ = '0.0.4.b1'
+__version__ = '0.0.4.b2'
 
 ### init paths and homedir
 home=Path.home() / '.swarmsync'
@@ -326,6 +326,23 @@ def upload():
         print ("pin: ", args.pin)
     if args.address:
         address=args.address
+    if args.beeurl:
+        urls = args.beeurl.split(",")
+        if len(urls) > 1 and args.no_tag != True:
+            choice = input('Tagging with multiple bees is not supported. Continue without tagging? [Y]es/[N]o: ').lower()
+            if choice in yes:
+                args.no_tag = True
+            else:
+                quit()
+        if len(urls) > 1 and args.stamp:
+            choice = input('Uploading to multiple bees is supported only without stamp (use gateway-proxy). Continue without? [Y]es/[N]o: ').lower()
+            if choice in yes:
+                args.stamp = ""
+            else:
+                quit()
+        for l in urls:
+            urll.append(normalize_url(l, 'bzz'))
+        print ("url: ", urll)
     if args.no_tag != True:
         if args.tag == "" or not args.tag:
             if Path(ADDRESS).is_file() and not address:
@@ -345,11 +362,6 @@ def upload():
                 print('Error: could not post tag to bee without an address')
                 quit()
     print ("TAG uid: ", tag['uid'])
-    if args.beeurl:
-        urls = args.beeurl.split(",")
-        for l in urls:
-            urll.append(normalize_url(l, 'bzz'))
-        print ("url: ", urll)
     prepare()
     main()
 
