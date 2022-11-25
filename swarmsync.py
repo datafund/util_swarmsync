@@ -465,7 +465,7 @@ parser_show.set_defaults(func=show)
 parser_download = subparsers.add_parser('download',
                                     help='download everything from responses list')
 parser_download.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
-                          ie. http://0:1633""", default="http://0:1633/stewardship/")
+                          ie. http://0:1633""", default="http://0:1633")
 parser_download.add_argument("-c", "--count", type=int, required=False,
                           help = "number of concurrent download", default=10)
 parser_download.set_defaults(func=download)
@@ -477,7 +477,7 @@ parser_check = subparsers.add_parser('check',
                                      help='check if files can be downloaded using stewardship or check tag status')
 parser_check.set_defaults(func=check)
 parser_check.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
-                          ie. http://0:1633""", default="http://0:1633/stewardship/")
+                          ie. http://0:1633""", default="http://0:1633")
 parser_check.add_argument("-c", "--count", type=int, required=False,
                           help = "number of concurrent uploads", default=10)
 parser_check.add_argument("-e", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
@@ -487,7 +487,7 @@ parser_upload = subparsers.add_parser('upload', help='upload folder and subfolde
 parser_upload.add_argument("-p", "--path",type=str,
                            help = "enter path to folder to be uploaded.", default=".")
 parser_upload.add_argument("-u", "--beeurl", type=str, help = """enter http address of bee. separate multiple bees with comma.
-                          ie. http://0:1633""", default="http://0:1633/bzz")
+                          ie. http://0:1633""", default="http://0:1633")
 parser_upload.add_argument("-c", "--count", type=int,
                            help = "number of concurrent uploads", default=5)
 parser_upload.add_argument("-s", "--search", type=str,
