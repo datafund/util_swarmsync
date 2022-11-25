@@ -175,12 +175,10 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     if MIME is None:
         MIME = "application/octet-stream"
 
+    headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
+             "swarm-postage-batch-id": stamp }
     if tag['uid']:
-        headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
-                 "swarm-postage-batch-id": stamp , "swarm-tag": json.dumps(tag['uid']) }
-    else:
-        headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
-                 "swarm-postage-batch-id": stamp }
+        headers.update=({ "swarm-tag": json.dumps(tag['uid']) })
 
     try:
         async with sem, session.post(url + '?name=' + os.path.basename(file.name),
