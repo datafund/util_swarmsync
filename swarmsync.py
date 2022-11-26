@@ -5,7 +5,7 @@ from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
 
-__version__ = '0.0.4.b2'
+__version__ = '0.0.4.r1'
 
 ### init paths and homedir
 home=Path.home() / '.swarmsync'
