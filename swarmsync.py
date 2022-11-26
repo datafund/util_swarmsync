@@ -178,8 +178,9 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
              "swarm-postage-batch-id": stamp }
     if tag['uid']:
-        headers.update=({ "swarm-tag": json.dumps(tag['uid']) })
-
+        headers.update({ "swarm-tag": json.dumps(tag['uid']) })
+    if args.encrypt:
+        headers.update({ "swarm-encrypt": "True" })
     try:
         async with sem, session.post(url + '?name=' + os.path.basename(file.name),
                                 headers=headers, data=file.file_reader()) as res:
@@ -187,12 +188,16 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             if 200 <= res.status <= 300:
               response = await res.json()
               ref = response['reference']
-              resp_dict = { "item": [ { "file": file.name, "reference": ref, "size": file.size} ] }
-              # if we have a reference we can asume upload was sucess
-              # so remove from todo list
               if len(ref) == 64:
-                todo.remove({"file": file.name })
-                write_list(TODO, todo)
+                  # if we have a reference we can asume upload was sucess
+                  # so remove from todo list
+                  todo.remove({"file": file.name })
+                  write_list(TODO, todo)
+              if len(ref) > 64:
+                  # if we have a reference and its longer than 64 then we can asume its encrypted upload
+                  resp_dict = { "item": [ { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size} ] }
+              else:
+                  resp_dict = { "item": [ { "file": file.name, "reference": ref, "size": file.size} ] }
             #else:
               #print(res.status)
             response_dict(RESPONSES, resp_dict)
@@ -210,7 +215,7 @@ async def async_check(scheduled, url: str):
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
     display.close()
-    print(f'items checked ({len(res)})')
+    print(f'\nitems checked ({len(res)})')
 
 async def async_upload(scheduled, urll):
     l_url = list(islice(cycle(urll), len(scheduled)))
@@ -219,7 +224,7 @@ async def async_upload(scheduled, urll):
     session_timeout=aiohttp.ClientTimeout(total=14400)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
-    print(f'items uploaded ({len(res)})')
+    print(f'\nitems uploaded ({len(res)})')
 
 async def async_download(references, paths, urll):
     global display
@@ -229,7 +234,7 @@ async def async_download(references, paths, urll):
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem) for reference, file, url in zip(references, paths, l_url)])
     display.close()
-    print(f'items downloaded ({len(res)})')
+    print(f'\nitems downloaded ({len(res)})')
 
 def lst_to_dict(lst):
     res_dct = {}
@@ -420,8 +425,13 @@ def download():
     paths=[]
     for x in download:
         for y in x['item']:
-          references.append(y['reference'])
-          paths.append(y['file'])
+            if 'decrypt' in y:
+                l_ref = y['reference'] + y['decrypt']
+                references.append(y['reference'] + y['decrypt'])
+            else:
+                references.append(y['reference'])
+            #append decrypt key if it exists
+            paths.append(y['file'])
 
     display=tqdm(
         total=len(references),
@@ -478,7 +488,7 @@ parser_check.add_argument("-u", "--beeurl", type=str, help =  """enter http addr
                           ie. http://0:1633""", default="http://0:1633")
 parser_check.add_argument("-c", "--count", type=int, required=False,
                           help = "number of concurrent uploads", default=10)
-parser_check.add_argument("-e", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
+parser_check.add_argument("-U", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
 parser_check.add_argument("-t", "--tag", type=str, required=False, help="enter tag uid to fetch info about", default="")
 
 parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
@@ -502,6 +512,7 @@ parser_upload.add_argument("-t", "--tag",
 parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
 parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
                            default="")
+parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.set_defaults(func=upload)
 
 if len(sys.argv)==1:
