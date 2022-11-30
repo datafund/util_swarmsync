@@ -175,12 +175,14 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     if MIME is None:
         MIME = "application/octet-stream"
 
-    headers={"Content-Type": MIME, "swarm-deferred-upload": "false", "swarm-pin": pin,
+    headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
     if tag['uid']:
         headers.update({ "swarm-tag": json.dumps(tag['uid']) })
     if args.encrypt:
         headers.update({ "swarm-encrypt": "True" })
+    if args.pin:
+        headers.update({ "swarm-pin": "True" })
     try:
         async with sem, session.post(url + '?name=' + os.path.basename(file.name),
                                 headers=headers, data=file.file_reader()) as res:
@@ -503,9 +505,7 @@ parser_upload.add_argument("-s", "--search", type=str,
 parser_upload.add_argument("-S", "--stamp", type=str,
                            help = "enter bee stamp id",
                            default="0000000000000000000000000000000000000000000000000000000000000000")
-parser_upload.add_argument("-P", "--pin", type=str,
-                           help = "should files be pinned True or False",
-                           choices=['true', 'false'], default="False")
+parser_upload.add_argument("-P", "--pin", action=argparse.BooleanOptionalAction, help="should files be pinned", required=False, default=False)
 parser_upload.add_argument("-t", "--tag",
                            help = """enter a uid tag for upload. if empty a new tag will be created.
                                      use --no-tag if you dont want any tag.""")
