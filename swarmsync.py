@@ -390,7 +390,7 @@ def check():
     if args.beeurl:
       url = normalize_url(args.beeurl, 'stewardship/')
       print ("url: ", url)
-    if args.tag or args.e:
+    if args.tag:
         print('\n\n\n')
         asyncio.run(check_tag(normalize_url(args.beeurl, 'tags/'), args.tag))
         quit()
