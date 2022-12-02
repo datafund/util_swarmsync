@@ -4,6 +4,7 @@ import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofile
 from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
+from termcolor import colored
 
 __version__ = '0.0.4.r1'
 
@@ -21,6 +22,8 @@ no = {'no','n'}
 address=""
 tag={}
 urll=[]
+all_errors=[]
+all_ok=""
 
 def append_list(file, a_list):
     with open(file, "a") as fp:
@@ -140,8 +143,11 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
                 response = await res.json()
                 result = response['isRetrievable']
                 quoted_result = f'{result}'
-                resp_dict = { "item": [ { "reference": ref, "isRetrievable": quoted_result, } ] }
+                resp_dict = { "item": [ { "reference": ref,
+                                         "isRetrievable": quoted_result, } ] }
                 response_dict(RETRIEVABLE, resp_dict)
+                if result != True:
+                    all_errors.append({ "reference": ref, "isRetrievable": quoted_result, })
             return res
     except Exception as e:
         # handle error(s) according to your needs
@@ -217,7 +223,7 @@ async def async_check(scheduled, url: str):
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
     display.close()
-    print(f'\nitems checked ({len(res)})')
+    return res
 
 async def async_upload(scheduled, urll):
     l_url = list(islice(cycle(urll), len(scheduled)))
@@ -411,7 +417,11 @@ def check():
         unit='references',
         colour='#ff8c00',
         leave=True)
-    asyncio.run(async_check(scheduled, url))
+    res = asyncio.run(async_check(scheduled, url))
+    if len(all_errors) != 0:
+      print(colored(json.dumps(all_errors, indent=4), 'red'))
+      print(colored('Failed items :', 'yellow'), colored(len(all_errors), 'red'))
+    print(f'Total items checked :{len(res)}')
 
 def download():
     global display
@@ -469,7 +479,7 @@ parser_show = subparsers.add_parser('show',
 parser_show.add_argument('s', type=str, help = """enter string string name to display.
                          options: todo, responses, retrievable""",
                          choices=['todo', 'responses', 'retrievable', 'size'],
-                         metavar='<name_of_list>', default='responses')
+                         metavar='show', default='responses')
 parser_show.set_defaults(func=show)
 
 parser_download = subparsers.add_parser('download',
