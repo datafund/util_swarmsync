@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from tqdm import tqdm
 import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
+import re
 from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
@@ -183,14 +184,15 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
-    if tag['uid']:
+    if tag:
         headers.update({ "swarm-tag": json.dumps(tag['uid']) })
     if args.encrypt:
         headers.update({ "swarm-encrypt": "True" })
     if args.pin:
         headers.update({ "swarm-pin": "True" })
+    n_file=re.sub('[^A-Za-z0-9-._]+', '_', os.path.basename(file.name))
     try:
-        async with sem, session.post(url + '?name=' + os.path.basename(file.name),
+        async with sem, session.post(url + '?name=' + n_file,
                                 headers=headers, data=file.file_reader()) as res:
             scheduled.remove(file.name)
             if 200 <= res.status <= 300:
@@ -374,7 +376,6 @@ def upload():
             else:
                 print('Error: could not post tag to bee without an address')
                 quit()
-    print ("TAG uid: ", tag['uid'])
     prepare()
     main()
 
