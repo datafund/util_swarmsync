@@ -399,6 +399,10 @@ def show():
       print(json.dumps(get, indent=4))
     if 'size' in args.s:
       get_size()
+    if args.tag or args.saved_tag:
+        print('\n\n\n')
+        asyncio.run(check_tag(normalize_url(args.beeurl, 'tags/'), args.tag))
+        quit()
 
 def check():
     global url,display
@@ -407,10 +411,6 @@ def check():
     if args.beeurl:
       url = normalize_url(args.beeurl, 'stewardship/')
       print ("url: ", url)
-    if args.tag:
-        print('\n\n\n')
-        asyncio.run(check_tag(normalize_url(args.beeurl, 'tags/'), args.tag))
-        quit()
 
     global scheduled
     checklist = read_dict(RESPONSES)
@@ -491,14 +491,18 @@ subparsers = parser.add_subparsers()
 parser.add_argument('-v', '--version', action='version',
                     version='%(prog)s {version}'.format(version=__version__))
 
+### show
 parser_show = subparsers.add_parser('show',
                                     help='print values of todo,responses or retrievables')
 parser_show.add_argument('s', type=str, help = """enter string string name to display.
                          options: todo, responses, retrievable""",
                          choices=['todo', 'responses', 'retrievable', 'size'],
                          metavar='show', default='responses')
+parser_show.add_argument("-s", "--saved-tag", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
+parser_show.add_argument("-t", "--tag", type=str, required=False, help="enter tag uid to fetch info about", default="")
 parser_show.set_defaults(func=show)
 
+### download
 parser_download = subparsers.add_parser('download',
                                     help='download everything from responses list')
 parser_download.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
@@ -510,6 +514,7 @@ parser_download.set_defaults(func=download)
 #parser_test = subparsers.add_parser('test', help='test')
 #parser_test.set_defaults(func=test)
 
+### check
 parser_check = subparsers.add_parser('check',
                                      help='check if files can be downloaded using stewardship or check tag status')
 parser_check.set_defaults(func=check)
@@ -517,9 +522,7 @@ parser_check.add_argument("-u", "--beeurl", type=str, help =  """enter http addr
                           ie. http://0:1633""", default="http://0:1633")
 parser_check.add_argument("-c", "--count", type=int, required=False,
                           help = "number of concurrent uploads", default=10)
-parser_check.add_argument("-U", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
-parser_check.add_argument("-t", "--tag", type=str, required=False, help="enter tag uid to fetch info about", default="")
-
+### upload
 parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
 parser_upload.add_argument("-p", "--path",type=str,
                            help = "enter path to folder to be uploaded.", default=".")
