@@ -136,6 +136,16 @@ def response_dict(file, a_dict):
   else:
     write_dict(file, str(l_dict).replace("'",'"'))
 
+async def create_tag():
+    global address
+    params = json.dumps({ "address": address })
+    headers = { "Content-Type": "application/json" }
+    async with aiohttp.ClientSession() as session:
+        async with session.post(normalize_url(args.beeurl, 'tags'), headers=headers, data=params) as resp:
+            if 200 <= resp.status <= 300:
+                tag = await resp.json()
+                print(tag)
+
 async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
     global display
     resp_dict = []
@@ -186,6 +196,8 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
     if tag:
+        await create_tag()
+        print('created tag: ', tag['uid'])
         headers.update({ "swarm-tag": json.dumps(tag['uid']) })
     if args.encrypt:
         headers.update({ "swarm-encrypt": "True" })
@@ -299,13 +311,7 @@ async def get_tag(url: str, addr: str):
     if Path(TAG).is_file():
         tag = read_dict(TAG)
     else:
-        params = json.dumps({ "address": addr })
-        headers = { "Content-Type": "application/json" }
-        async with aiohttp.ClientSession() as session:
-            async with session.post(normalize_url(url, 'tags'), headers=headers, data=params) as resp:
-                if 200 <= resp.status <= 300:
-                    tag = await resp.json()
-                    write_list(TAG, tag)
+        tag = create_tag()
     return tag
 
 def main():
@@ -366,7 +372,7 @@ def upload():
         if args.tag == "" or not args.tag:
             if Path(ADDRESS).is_file() and not address:
                 address = read_dict(ADDRESS)
-                print ('using existing address')
+                print ('using existing address :', address)
             else:
                 choice = input('No address detected. Create a random address ? [Y]es/[n]o:').lower()
                 if choice in yes:
@@ -376,7 +382,6 @@ def upload():
             if address:
                 tag = asyncio.run(get_tag(args.beeurl, address))
                 write_list(ADDRESS, address)
-                print ("saving address: ", address)
             else:
                 print('Error: could not post tag to bee without an address')
                 quit()
