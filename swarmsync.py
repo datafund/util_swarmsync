@@ -17,6 +17,7 @@ ADDRESS=Path.home() / '.swarmsync/address'
 TAG=Path.home() / '.swarmsync/tag.json'
 RESPONSES=Path.home() / '.swarmsync/responses.json'
 RETRIEVABLE=Path.home() / '.swarmsync/retrievable.json'
+RETRY=Path.home() / '.swarmsync/retry.json'
 Path(home).mkdir(exist_ok=True)
 yes = {'yes','y', 'ye', ''}
 no = {'no','n'}
@@ -198,7 +199,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             if 200 <= res.status <= 300:
               response = await res.json()
               ref = response['reference']
-              if len(ref) == 64:
+              if len(ref) == 64 and args.reupload == 'False':
                   # if we have a reference we can asume upload was sucess
                   # so remove from todo list
                   todo.remove({"file": file.name })
@@ -310,12 +311,15 @@ async def get_tag(url: str, addr: str):
 def main():
     global scheduled,todo
     cleanup(RESPONSES)
-    todo = read_dict(TODO)
-    print('\n\n\n')
-    scheduled=[]
-    for x in todo:
-      scheduled.append(x['file'])
+    if args.reupload:
+        scheduled = read_dict(RETRY)
+    else:
+        todo = read_dict(TODO)
+        scheduled=[]
+        for x in todo:
+          scheduled.append(x['file'])
 
+    print('\n\n\n')
     start = time.time()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
@@ -423,6 +427,14 @@ def check():
       print(colored(json.dumps(all_errors, indent=4), 'red'))
       print(colored('Failed items :', 'yellow'), colored(len(all_errors), 'red'))
     print(f'Total items checked :{len(res)}')
+    retry=[]
+    for i in all_errors:
+        for x in checklist:
+            for y in x['item']:
+                if y['reference'] == i['reference']:
+                    retry.append(y['file'])
+    if retry != []:
+        write_list(RETRY, retry)
 
 def download():
     global display
@@ -524,6 +536,7 @@ parser_upload.add_argument("--no-tag", action='store_true', help="Disable taggin
 parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
                            default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
+parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
 parser_upload.set_defaults(func=upload)
 
 if len(sys.argv)==1:
