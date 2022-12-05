@@ -197,7 +197,6 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
              "swarm-postage-batch-id": stamp }
     if tag:
         await create_tag()
-        print('created tag: ', tag['uid'])
         headers.update({ "swarm-tag": json.dumps(tag['uid']) })
     if args.encrypt:
         headers.update({ "swarm-encrypt": "True" })
