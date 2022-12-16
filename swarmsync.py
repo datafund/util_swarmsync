@@ -188,6 +188,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         display.update()
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
+    global scheduled,todo
     resp_dict = []
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     if MIME is None:
@@ -210,7 +211,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             if 200 <= res.status <= 300:
               response = await res.json()
               ref = response['reference']
-              if len(ref) == 64 and args.reupload == 'False':
+              if len(ref) == 64 and not args.reupload:
                   # if we have a reference we can asume upload was sucess
                   # so remove from todo list
                   todo.remove({"file": file.name })
