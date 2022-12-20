@@ -234,16 +234,18 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
                     resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size }
+                    todo.remove({ "file": file.name })
+                    write_list(TODO, todo)
                 if len(ref) == 64:
                     resp_dict = { "file": file.name, "reference": ref, "size": file.size }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
-                    quit()
+                    cleanup(RESPONSES)
             else:
                 print('\n\n An error occured: ', res.status)
                 # better quit on error
-                quit()
+                cleanup(RESPONSES)
             #everything passed, write response
             response_dict(RESPONSES, resp_dict)
             return res
@@ -298,7 +300,7 @@ def clean_responses(file):
     if data:
       clean = OrderedDict((frozenset(item.items()),item) for item in data).values()
       clean=str(clean).replace("odict_values(", "")
-      clean=str(clean).replace(")", "")
+      clean=''.join(clean.rstrip(')'))
       write_dict(file, str(clean))
 
 def cleanup(file):
@@ -460,9 +462,8 @@ def check():
     retry=[]
     for i in all_errors:
         for x in checklist:
-            for y in x:
-                if y['reference'] == i['reference']:
-                    retry.append(y['file'])
+            if x['reference'] == i['reference']:
+                retry.append(x['file'])
     if retry != []:
         write_list(RETRY, retry)
 
