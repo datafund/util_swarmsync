@@ -173,6 +173,9 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
                 response_dict(RETRIEVABLE, resp_dict)
                 if result != True:
                     all_errors.append({ "reference": ref, "isRetrievable": quoted_result, })
+            else:
+                print('Error occured :', res.status)
+                quit()
             return res
     except Exception as e:
         # handle error(s) according to your needs
