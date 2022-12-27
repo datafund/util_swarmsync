@@ -210,7 +210,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     if MIME is None:
         MIME = "application/octet-stream"
 
-    headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
+    headers={"Content-Type": MIME, "swarm-deferred-upload": "true",
              "swarm-postage-batch-id": stamp }
     if tag:
         ntag = await create_tag()
@@ -448,7 +448,11 @@ def check():
     checklist = read_dict(RESPONSES)
     scheduled=[]
     for x in checklist:
-          scheduled.append(x['reference'])
+        if 'decrypt' in x:
+            l_ref = x['reference'] + x['decrypt']
+            scheduled.append(x['reference'] + x['decrypt'])
+        else:
+            scheduled.append(x['reference'])
     print('\n\n\n')
     print('Checking stewardship...')
     display=tqdm(
