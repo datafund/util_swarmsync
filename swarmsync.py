@@ -11,16 +11,6 @@ from collections import OrderedDict
 
 __version__ = '0.0.5.r3'
 
-### init paths and homedir
-home=Path.home() / '.swarmsync'
-ALLFILES=Path.home() / '.swarmsync/allfiles.json'
-TODO=Path.home() / '.swarmsync/todo.json'
-ADDRESS=Path.home() / '.swarmsync/address'
-TAG=Path.home() / '.swarmsync/tag.json'
-RESPONSES=Path.home() / '.swarmsync/responses.json'
-RETRIEVABLE=Path.home() / '.swarmsync/retrievable.json'
-RETRY=Path.home() / '.swarmsync/retry.json'
-Path(home).mkdir(exist_ok=True)
 yes = {'yes','y', 'ye', ''}
 no = {'no','n'}
 address=""
@@ -61,6 +51,33 @@ class q_dict(dict):
 
     def __repr__(self):
         return json.dumps(self, ensure_ascii=False)
+
+def init_paths(local):
+    if local != True:
+        home=Path('.').resolve() / '.swarmsync'
+        ALLFILES=Path('.').resolve() / '.swarmsync/allfiles.json'
+        TODO=Path('.').resolve() / '.swarmsync/todo.json'
+        ADDRESS=Path('.').resolve() / '.swarmsync/address'
+        TAG=Path('.').resolve() / '.swarmsync/tag.json'
+        RESPONSES=Path('.').resolve() / '.swarmsync/responses.json'
+        RETRIEVABLE=Path('.').resolve() / '.swarmsync/retrievable.json'
+        RETRY=Path('.').resolve() / '.swarmsync/retry.json'
+    else:
+        home=Path.home() / '.swarmsync'
+        ALLFILES=Path.home() / '.swarmsync/allfiles.json'
+        TODO=Path.home() / '.swarmsync/todo.json'
+        ADDRESS=Path.home() / '.swarmsync/address'
+        TAG=Path.home() / '.swarmsync/tag.json'
+        RESPONSES=Path.home() / '.swarmsync/responses.json'
+        RETRIEVABLE=Path.home() / '.swarmsync/retrievable.json'
+        RETRY=Path.home() / '.swarmsync/retry.json'
+
+    Path(home).mkdir(exist_ok=True)
+    if not Path(RETRIEVABLE).is_file():
+        write_dict(RETRIEVABLE, '[]')
+    if not Path(RESPONSES).is_file():
+        write_dict(RESPONSES, '[]')
+
 
 def prepare():
   global pin,stamp
@@ -513,18 +530,14 @@ def download():
     loop.close()
     print('Time spent downloading:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
-# init file
-if not Path(RETRIEVABLE).is_file():
-    write_dict(RETRIEVABLE, '[]')
-if not Path(RESPONSES).is_file():
-    write_dict(RESPONSES, '[]')
-
 # Initialize parser
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
 parser.add_argument('-v', '--version', action='version',
                     version='%(prog)s {version}'.format(version=__version__))
+
+parser.add_argument('--no-local', action='store_true', help='save swarmsync files in home folder')
 
 ### show
 parser_show = subparsers.add_parser('show',
@@ -586,6 +599,7 @@ if len(sys.argv)==1:
   sys.exit(1)
 
 args = parser.parse_args()
+init_paths(args.no_local)
 if args.func:
     args.func()
 
