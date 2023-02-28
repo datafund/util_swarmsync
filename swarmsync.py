@@ -53,6 +53,7 @@ class q_dict(dict):
         return json.dumps(self, ensure_ascii=False)
 
 def init_paths(local):
+    global home,ALLFILES,TODO,ADDRESS,TAG,RESPONSES,RETRIEVABLE,RETRY
     if local != True:
         home=Path('.').resolve() / '.swarmsync'
         ALLFILES=Path('.').resolve() / '.swarmsync/allfiles.json'
@@ -81,10 +82,12 @@ def init_paths(local):
 
 def prepare():
   global pin,stamp
+  global home,ALLFILES,TODO,ADDRESS,TAG,RESPONSES,RETRIEVABLE,RETRY
   pin=args.pin
   stamp=args.stamp
 
   FILES=sorted(list(filter(lambda x: x.is_file(), Path(args.path).rglob(args.search))))
+  FILES=filter(lambda x: not any((part for part in x.parts if part.startswith("."))), FILES)
   jsonList = []
   for f in FILES:
       jsonList.append({ "file": f.as_posix() })
@@ -227,7 +230,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     if MIME is None:
         MIME = "application/octet-stream"
 
-    headers={"Content-Type": MIME, "swarm-deferred-upload": "true",
+    headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
     if tag:
         ntag = await create_tag()
