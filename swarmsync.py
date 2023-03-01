@@ -182,6 +182,7 @@ async def create_tag():
 
 async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
     global display
+    await sem.acquire()
     resp_dict = []
     try:
         async with sem, session.get(url + ref) as res:
@@ -207,6 +208,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
 
 async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem):
     global display
+    await sem.acquire()
     try:
         async with sem, session.get(url + '/' + ref + '/') as res:
             r_data = await res.read()
@@ -226,6 +228,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
+    await sem.acquire()
     resp_dict = {}
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     if MIME is None:
