@@ -171,6 +171,7 @@ async def create_tag():
             async with session.post(normalize_url(args.beeurl, 'tags'), headers=headers, data=params) as resp:
                 if 200 <= resp.status <= 300:
                     tag = await resp.json()
+                    write_dict(TAG, json_dumps(tag))
                     return(tag)
                 else:
                     print('Can not create tag!')
@@ -232,9 +233,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
-    if tag:
+    if tag is None
         ntag = await create_tag()
         headers.update({ "swarm-tag": json.dumps(ntag['uid']) })
+    else:
+        headers.update({ "swarm-tag": json.dumps(tag) })
     if args.encrypt:
         headers.update({ "swarm-encrypt": "True" })
     if args.pin:
