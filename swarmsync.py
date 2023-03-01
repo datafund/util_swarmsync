@@ -236,7 +236,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
-    if tag != {} 
+    if tag != {}:
         headers.update({ "swarm-tag": tag })
     else:
         headers.update({ "swarm-tag": json.dumps(tag) })
