@@ -588,7 +588,7 @@ parser_upload.add_argument("-p", "--path",type=str,
 parser_upload.add_argument("-u", "--beeurl", type=str, help = """enter http address of bee. separate multiple bees with comma.
                           ie. http://0:1633""", default="http://0:1633")
 parser_upload.add_argument("-c", "--count", type=int,
-                           help = "number of concurrent uploads", default=5)
+                           help = "number of concurrent uploads", default=10)
 parser_upload.add_argument("-s", "--search", type=str,
                            help = "search param(* or *.jpg or somename.txt", default="*.*")
 parser_upload.add_argument("-S", "--stamp", type=str,
