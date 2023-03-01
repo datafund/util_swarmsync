@@ -225,7 +225,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         display.update()
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
-    global scheduled,todo
+    global scheduled,todo,tag
     resp_dict = {}
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     if MIME is None:
@@ -233,9 +233,8 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
-    if tag is None
-        ntag = await create_tag()
-        headers.update({ "swarm-tag": json.dumps(ntag['uid']) })
+    if tag != {} 
+        headers.update({ "swarm-tag": tag })
     else:
         headers.update({ "swarm-tag": json.dumps(tag) })
     if args.encrypt:
@@ -363,9 +362,11 @@ async def check_tag(url: str, u_tag: str):
 async def get_tag(url: str, addr: str):
     tag = {}
     if Path(TAG).is_file():
-        tag = read_dict(TAG)
+        u_tag = read_dict(TAG)
+        tag = json.dumps(u_tag['uid'])
     else:
         tag = await create_tag()
+        write_dict(TAG, json.dumps(tag))
     return tag
 
 def main():
@@ -439,6 +440,7 @@ def upload():
             else:
                 print('Error: could not post tag to bee without an address')
                 quit()
+        tag = args.tag
     prepare()
     main()
 
