@@ -182,7 +182,6 @@ async def create_tag():
 
 async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
     global display
-    await sem.acquire()
     resp_dict = []
     try:
         async with sem, session.get(url + ref) as res:
@@ -208,7 +207,6 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
 
 async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem):
     global display
-    await sem.acquire()
     try:
         async with sem, session.get(url + '/' + ref + '/') as res:
             r_data = await res.read()
