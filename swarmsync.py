@@ -234,8 +234,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
-
-    if tag is not None or tag != '{}':
+    if tag is not None:
         headers.update({ "swarm-tag": tag })
     else:
         headers.update({ "swarm-tag": json.dumps(tag) })
@@ -409,6 +408,8 @@ def upload():
         print ("pin: ", args.pin)
     if args.address:
         address=args.address
+    if args.tag:
+        tag=args.tag
     if args.beeurl:
         urls = args.beeurl.split(",")
         if len(urls) > 1 and args.no_tag != True:
