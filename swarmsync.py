@@ -171,7 +171,7 @@ async def create_tag():
             async with session.post(normalize_url(args.beeurl, 'tags'), headers=headers, data=params) as resp:
                 if 200 <= resp.status <= 300:
                     tag = await resp.json()
-                    write_dict(TAG, json_dumps(tag))
+                    write_dict(TAG, json.dumps(tag))
                     return(tag)
                 else:
                     print('Can not create tag!')
@@ -236,7 +236,8 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
              "swarm-postage-batch-id": stamp }
-    if tag != {}:
+
+    if tag is not None or tag != '{}':
         headers.update({ "swarm-tag": tag })
     else:
         headers.update({ "swarm-tag": json.dumps(tag) })
@@ -363,9 +364,10 @@ async def check_tag(url: str, u_tag: str):
                 print('Error in getting tag')
 
 async def get_tag(url: str, addr: str):
-    tag = {}
     if Path(TAG).is_file():
         u_tag = read_dict(TAG)
+        if u_tag is None:
+            u_tag=await create_tag()
         tag = json.dumps(u_tag['uid'])
     else:
         tag = await create_tag()
@@ -443,7 +445,6 @@ def upload():
             else:
                 print('Error: could not post tag to bee without an address')
                 quit()
-        tag = args.tag
     prepare()
     main()
 
