@@ -2,7 +2,7 @@
 # encoding: utf-8
 from tqdm import tqdm
 import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
-import re
+import re,hashlib
 from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
@@ -123,6 +123,7 @@ class FileManager():
     def __init__(self, file_name: str):
         self.name = file_name
         self.size = os.path.getsize(self.name)
+        self.sha256 = hashlib.sha256()
         self.pbar = None
 
     def __init_pbar(self):
@@ -143,6 +144,7 @@ class FileManager():
             chunk = await f.read(chunk_size)
             while chunk:
                 self.pbar.update(chunk_size)
+                self.sha256.update(chunk)
                 yield chunk
                 chunk = await f.read(chunk_size)
             self.pbar.close()
@@ -259,11 +261,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
                 #cant handle quotes in responses dict
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
-                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size }
+                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest() }
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
                 if len(ref) == 64:
-                    resp_dict = { "file": file.name, "reference": ref, "size": file.size }
+                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": file.sha256.hexdigest() }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
