@@ -144,9 +144,9 @@ class FileManager():
             chunk = await f.read(chunk_size)
             while chunk:
                 self.pbar.update(chunk_size)
-                self.sha256.update(chunk)
                 yield chunk
                 chunk = await f.read(chunk_size)
+                self.sha256.update(chunk)
             self.pbar.close()
 
 def get_size():
@@ -168,12 +168,14 @@ async def create_tag():
     global address
     params = json.dumps({ "address": address })
     headers = { "Content-Type": "application/json" }
+    if args.xbee_header:
+        headers.update({ "x-bee-node": args.xbee_header })
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(normalize_url(args.beeurl, 'tags'), headers=headers, data=params) as resp:
                 if 200 <= resp.status <= 300:
                     tag = await resp.json()
-                    write_dict(TAG, json.dumps(tag))
+                    write_dict(TAG, json.dumps(tag['uid']))
                     return(tag['uid'])
                 else:
                     print('Can not create tag!')
@@ -207,7 +209,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         sem.release()
         display.update()
 
-async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem):
+async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256):
     global display
     try:
         async with sem, session.get(url + '/' + ref + '/') as res:
@@ -215,9 +217,17 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             if not 200 <= res.status <= 201:
                 print(f"Download failed: {res.status}")
                 return res
+        if sha256:
+            if sha256 == hashlib.sha256(r_data).hexdigest():
+                Path(file).parent.mkdir(exist_ok=True)
+                async with aiofiles.open(file, mode='wb') as f:
+                    await f.write(r_data)
+            else:
+                print(f"Download failed: sha mismatch detected, file was not saved")
+        else:
             Path(file).parent.mkdir(exist_ok=True)
-        async with aiofiles.open(file, mode='wb') as f:
-            await f.write(r_data)
+            async with aiofiles.open(file, mode='wb') as f:
+                await f.write(r_data)
         return res
     except Exception as e:
         # handle error(s) according to your needs
@@ -238,11 +248,13 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
              "swarm-postage-batch-id": stamp }
     if tag is not None:
         if bool(tag) != False:
-            headers.update({ "swarm-tag": tag })
+            headers.update({ "swarm-tag": tag.__str__() })
     if args.encrypt:
         headers.update({ "swarm-encrypt": "True" })
     if args.pin:
         headers.update({ "swarm-pin": "True" })
+    if args.xbee_header:
+        headers.update({ "x-bee-node": args.xbee_header })
     n_file=re.sub('[^A-Za-z0-9-._]+', '_', os.path.basename(file.name))
     try:
         async with sem, session.post(url + '?name=' + n_file,
@@ -257,7 +269,6 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
 
-                #cant handle quotes in responses dict
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
                     resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest() }
@@ -302,13 +313,13 @@ async def async_upload(scheduled, urll):
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
     print(f'\nitems uploaded ({len(res)})')
 
-async def async_download(references, paths, urll):
+async def async_download(references, paths, urll, sha256l):
     global display,args
     l_url = list(islice(cycle(urll), len(references)))
     sem = asyncio.Semaphore(args.count)
     session_timeout=aiohttp.ClientTimeout(total=14400)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
-        res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem) for reference, file, url in zip(references, paths, l_url)])
+        res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)])
     display.close()
     print(f'\nitems downloaded ({len(res)})')
 
@@ -366,10 +377,9 @@ async def get_tag(url: str, addr: str):
         u_tag = read_dict(TAG)
         if u_tag is None:
             u_tag=await create_tag()
-        tag = json.dumps(u_tag['uid'])
+        tag = json.dumps(u_tag)
     else:
         tag = await create_tag()
-        write_dict(TAG, json.dumps(tag))
     return tag
 
 def main():
@@ -515,6 +525,7 @@ def download():
     download = read_dict(RESPONSES)
     references=[]
     paths=[]
+    sha256=[]
     for x in download:
         if 'decrypt' in x:
             l_ref = x['reference'] + x['decrypt']
@@ -523,6 +534,7 @@ def download():
             references.append(x['reference'])
         #append decrypt key if it exists
         paths.append(x['file'])
+        sha256.append(x['sha256'])
 
     display=tqdm(
         total=len(references),
@@ -536,7 +548,7 @@ def download():
     start = time.time()
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
-    loop.run_until_complete(async_download(references, paths, urll))
+    loop.run_until_complete(async_download(references, paths, urll, sha256))
     end = time.time()
     loop.run_until_complete(asyncio.sleep(0.250))
     loop.close()
@@ -601,6 +613,8 @@ parser_upload.add_argument("-t", "--tag",
                                      use --no-tag if you dont want any tag.""")
 parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
 parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
+                           default="")
+parser_upload.add_argument("-x", "--xbee-header", type=str, help="add x-bee-node header",
                            default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
