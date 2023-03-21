@@ -144,9 +144,9 @@ class FileManager():
             chunk = await f.read(chunk_size)
             while chunk:
                 self.pbar.update(chunk_size)
+                self.sha256.update(chunk)
                 yield chunk
                 chunk = await f.read(chunk_size)
-                self.sha256.update(chunk)
             self.pbar.close()
 
 def get_size():
@@ -189,7 +189,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
     resp_dict = []
     try:
         async with sem, session.get(url + ref) as res:
-            if 200 <= res.status <= 300:
+            if 200 <= res.status <= 299:
                 response = await res.json()
                 result = response['isRetrievable']
                 quoted_result = f'{result}'
@@ -214,8 +214,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     try:
         async with sem, session.get(url + '/' + ref + '/') as res:
             r_data = await res.read()
-            if not 200 <= res.status <= 201:
-                print(f"Download failed: {res.status}")
+            if not 200 <= res.status <= 299:
                 return res
         if sha256:
             if sha256 == hashlib.sha256(r_data).hexdigest():
@@ -223,7 +222,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 async with aiofiles.open(file, mode='wb') as f:
                     await f.write(r_data)
             else:
-                print(f"Download failed: sha mismatch detected, file was not saved")
+                res.status = 409
+                res.reason = 'sha256'
         else:
             Path(file).parent.mkdir(exist_ok=True)
             async with aiofiles.open(file, mode='wb') as f:
@@ -257,7 +257,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         headers.update({ "x-bee-node": args.xbee_header })
     n_file=re.sub('[^A-Za-z0-9-._]+', '_', os.path.basename(file.name))
     try:
-        async with sem, session.post(url + '?name=' + n_file,
+        async with session.post(url + '?name=' + n_file,
                                 headers=headers, data=file.file_reader()) as res:
             scheduled.remove(file.name)
             if 200 <= res.status <= 300:
@@ -322,6 +322,17 @@ async def async_download(references, paths, urll, sha256l):
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)])
     display.close()
     print(f'\nitems downloaded ({len(res)})')
+    status = []
+    for i in res:
+        status.append(i.status)
+    status = [str(x) for x in status]
+    print(f'sha256 checksum mismatches ({status.count("409")})')
+    print(f'404 errors ({status.count("404")})')
+    status_filtered = list(filter(lambda v: re.match('20.', v), status))
+    print(f'OK ({len(status_filtered)})')
+    status_filtered = list(filter(lambda v: re.match('50.', v), status))
+    print(f'50x ({len(status_filtered)})')
+
 
 def lst_to_dict(lst):
     res_dct = {}
@@ -532,9 +543,9 @@ def download():
             references.append(x['reference'] + x['decrypt'])
         else:
             references.append(x['reference'])
-        #append decrypt key if it exists
         paths.append(x['file'])
-        sha256.append(x['sha256'])
+        if 'sha256' in x:
+            sha256.append(x['sha256'])
 
     display=tqdm(
         total=len(references),
