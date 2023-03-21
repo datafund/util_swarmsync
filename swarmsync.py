@@ -322,17 +322,17 @@ async def async_download(references, paths, urll, sha256l):
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)])
     display.close()
-    print(f'\nitems downloaded ({len(res)})')
+    print(f'\nitems to download ({len(res)})')
     status = []
     for i in res:
         status.append(i.status)
     status = [str(x) for x in status]
     print(f'sha256 checksum mismatches ({status.count("409")})')
     print(f'404 errors ({status.count("404")})')
-    status_filtered = list(filter(lambda v: re.match('20.', v), status))
-    print(f'OK ({len(status_filtered)})')
     status_filtered = list(filter(lambda v: re.match('50.', v), status))
     print(f'50x ({len(status_filtered)})')
+    status_filtered = list(filter(lambda v: re.match('20.', v), status))
+    print(f'OK ({len(status_filtered)})')
 
 
 def lst_to_dict(lst):
