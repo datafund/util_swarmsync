@@ -201,6 +201,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
             else:
                 print('Error occured :', res.status)
                 quit()
+            await asyncio.sleep(1)
             return res
     except Exception as e:
         # handle error(s) according to your needs
