@@ -53,32 +53,25 @@ class q_dict(dict):
         return json.dumps(self, ensure_ascii=False)
 
 def init_paths(local):
-    global home,ALLFILES,TODO,ADDRESS,TAG,RESPONSES,RETRIEVABLE,RETRY
+    global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY
     if local != True:
-        home=Path('.').resolve() / '.swarmsync'
-        ALLFILES=Path('.').resolve() / '.swarmsync/allfiles.json'
-        TODO=Path('.').resolve() / '.swarmsync/todo.json'
-        ADDRESS=Path('.').resolve() / '.swarmsync/address'
-        TAG=Path('.').resolve() / '.swarmsync/tag.json'
-        RESPONSES=Path('.').resolve() / '.swarmsync/responses.json'
-        RETRIEVABLE=Path('.').resolve() / '.swarmsync/retrievable.json'
-        RETRY=Path('.').resolve() / '.swarmsync/retry.json'
+        home = Path('.').resolve() / '.swarmsync'
     else:
-        home=Path.home() / '.swarmsync'
-        ALLFILES=Path.home() / '.swarmsync/allfiles.json'
-        TODO=Path.home() / '.swarmsync/todo.json'
-        ADDRESS=Path.home() / '.swarmsync/address'
-        TAG=Path.home() / '.swarmsync/tag.json'
-        RESPONSES=Path.home() / '.swarmsync/responses.json'
-        RETRIEVABLE=Path.home() / '.swarmsync/retrievable.json'
-        RETRY=Path.home() / '.swarmsync/retry.json'
+        home = Path.home() / '.swarmsync'
 
-    Path(home).mkdir(exist_ok=True)
-    if not Path(RETRIEVABLE).is_file():
+    ALLFILES = home / 'allfiles.json'
+    TODO = home / 'todo.json'
+    ADDRESS = home / 'address'
+    TAG = home / 'tag.json'
+    RESPONSES = home / 'responses.json'
+    RETRIEVABLE = home / 'retrievable.json'
+    RETRY = home / 'retry.json'
+
+    home.mkdir(exist_ok=True)
+    if not RETRIEVABLE.is_file():
         write_dict(RETRIEVABLE, '[]')
-    if not Path(RESPONSES).is_file():
+    if not RESPONSES.is_file():
         write_dict(RESPONSES, '[]')
-
 
 def prepare():
   global pin,stamp
