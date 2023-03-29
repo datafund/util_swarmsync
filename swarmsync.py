@@ -187,8 +187,9 @@ async def create_tag():
 async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
     global display
     resp_dict = []
+    await sem.acquire()
     try:
-        async with sem, session.get(url + ref) as res:
+        async with session.get(url + ref) as res:
             if 200 <= res.status <= 299:
                 response = await res.json()
                 result = response['isRetrievable']
@@ -201,19 +202,20 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
             else:
                 print('Error occured :', res.status)
                 quit()
-            await asyncio.sleep(1)
+            await asyncio.sleep(2)
             return res
     except Exception as e:
         # handle error(s) according to your needs
         print(e)
     finally:
-        sem.release()
         display.update()
+        sem.release()
 
 async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256):
     global display
+    await sem.acquire()
     try:
-        async with sem, session.get(url + '/' + ref + '/') as res:
+        async with session.get(url + '/' + ref + '/') as res:
             r_data = await res.read()
             if not 200 <= res.status <= 299:
                 return res
@@ -234,8 +236,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         # handle error(s) according to your needs
         print(e)
     finally:
-        sem.release()
         display.update()
+        sem.release()
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
