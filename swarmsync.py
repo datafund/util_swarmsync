@@ -8,6 +8,7 @@ from pathlib import Path
 from secrets import token_hex
 from termcolor import colored
 from collections import OrderedDict
+from pymantaray import MantarayIndex,Entry,MantarayIndexHTMLGenerator
 
 __version__ = '0.0.5.r3'
 
@@ -53,7 +54,7 @@ class q_dict(dict):
         return json.dumps(self, ensure_ascii=False)
 
 def init_paths(local):
-    global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY
+    global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY, MANTARAY, INDEX
     if local != True:
         home = Path('.').resolve() / '.swarmsync'
     else:
@@ -66,6 +67,8 @@ def init_paths(local):
     RESPONSES = home / 'responses.json'
     RETRIEVABLE = home / 'retrievable.json'
     RETRY = home / 'retry.json'
+    MANTARAY = home / 'mantaray.json'
+    INDEX = home / 'index.html'
 
     home.mkdir(exist_ok=True)
     if not RETRIEVABLE.is_file():
@@ -267,11 +270,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
-                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest() }
+                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest(), "Content-Type": MIME }
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
                 if len(ref) == 64:
-                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": file.sha256.hexdigest() }
+                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": file.sha256.hexdigest(), "Content-Type": MIME }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
@@ -388,6 +391,49 @@ async def get_tag(url: str, addr: str):
     else:
         tag = await create_tag()
     return tag
+
+async def create_mantaray_index(json_file_path: str, index_file_path: str) -> bool:
+    # Load the JSON data from the file
+    async with aiofiles.open(json_file_path, 'r') as f:
+        json_str = await f.read()
+    json_data = json.loads(json_str)
+
+    # Set up the index file path
+    index_file = Path(index_file_path)
+
+    # Only create the index file if it doesn't exist
+    if not index_file.is_file():
+        # Create a new index file
+        index = MantarayIndex(index_file)
+
+        # add each entry to the index
+        for entry_data in json_data:
+            file = entry_data.get('file')
+            reference = entry_data.get('reference')
+            size = entry_data.get('size')
+            sha256 = entry_data.get('sha256')
+            content_type = entry_data.get('content_type', 'application/octet-stream')
+            entry = Entry(file, reference, size, sha256, content_type)
+            index.add_entry(entry.to_dict())
+    else:
+        # Open the existing index file
+        index = MantarayIndex(index_file)
+
+        # add any new entries to the index
+        existing_references = {entry['reference'] for entry in index.get_existing_references()}
+        for entry_data in json_data:
+            if entry_data['reference'] not in existing_references:
+                content_type = entry_data.get('content_type', 'application/octet-stream')
+                entry = Entry(entry_data['file'], entry_data['reference'], entry_data['size'], entry_data['sha256'], content_type)
+                index.add_entry(entry.to_dict())
+
+    # Save the index to disk
+    try:
+        index.save_index()
+    except:
+        return False
+
+    return True
 
 def main():
     global scheduled,todo
@@ -561,6 +607,18 @@ def download():
     loop.close()
     print('Time spent downloading:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
+def mantaray():
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    index = loop.run_until_complete(create_mantaray_index(RESPONSES, MANTARAY))
+    loop.close()
+    if index:
+        print('Index created or updated successfully!')
+    else:
+        print('Error creating or updating index.')
+    index_html_generator = MantarayIndexHTMLGenerator(MANTARAY, INDEX, baseurl='./')
+    index_html_generator.generate()
+
 # Initialize parser
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
@@ -626,6 +684,11 @@ parser_upload.add_argument("-x", "--xbee-header", type=str, help="add x-bee-node
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
 parser_upload.set_defaults(func=upload)
+### mantaray
+parser_mantaray = subparsers.add_parser('mantaray', help='manage mantaray index')
+parser_mantaray.add_argument("-p", "--path",type=str,
+                           help = "enter path to folder to be uploaded.", default=".")
+parser_mantaray.set_defaults(func=mantaray)
 
 if len(sys.argv)==1:
   parser.print_help(sys.stderr)
