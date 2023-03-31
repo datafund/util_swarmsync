@@ -101,6 +101,42 @@ class MantarayIndexHTMLGenerator:
         with open(self.output_html_path, 'w') as f:
             f.write('<html>\n<head>\n<title>Swarmsync Index</title>\n')
             f.write('</head>\n<body>\n')
+            f.write('<style>\n')
+            f.write('body {\n')
+            f.write('  background: #000 url("https://gateway.fairdatasociety.org/bzz/7c824651b2d82281944830fc0b261f10d26dbbd5b24efa8f030f55d8e5c2e1ef/") repeat center center scroll;\n')
+            f.write('  background-size: cover;\n')
+            f.write('  font-family: monospace;\n')
+            f.write('  color: #fff;\n')
+            f.write('}\n')
+            f.write('h1 {\n')
+            f.write('  text-align: center;\n')
+            f.write('}\n')
+            f.write('ul {\n')
+            f.write('  list-style: none;\n')
+            f.write('  padding: 0;\n')
+            f.write('  margin: 0;\n')
+            f.write('}\n')
+            f.write('li {\n')
+            f.write('  padding: 10px 0;\n')
+            f.write('}\n')
+            f.write('a {\n')
+            f.write('  color: #fff;\n')
+            f.write('  text-decoration: none;\n')
+            f.write('}\n')
+            f.write('.hidden {\n')
+            f.write('  display: none;\n')
+            f.write('}\n')
+            f.write('input, button {\n')
+            f.write('  font-family: monospace;\n')
+            f.write('}\n')
+            f.write('.index {\n')
+            f.write('}\n')
+            f.write('.show .index {\n')
+            f.write('  display: block;\n')
+            f.write('}\n')
+            f.write('</style>\n')
+            f.write('</head>\n')
+
             f.write('<h1>Swarmsync Index</h1>\n')
             f.write('<input id="uri-input" type="text" placeholder="Enter file URI" />\n')
             f.write('<button onclick="openFileByUri()">Open File</button>\n')
@@ -110,8 +146,9 @@ class MantarayIndexHTMLGenerator:
                 uri = entry['file']
                 size = entry['size']
                 reference = entry['reference']
-    
-                f.write(f'<li><a href="#" onclick="loadFileByReference(\'{reference}\')">{uri}</a> ({size} bytes, reference={reference})</li>\n')
+                sha256 = entry['sha256']
+
+                f.write(f'<li><a href="#" onclick="loadFileByReference(\'{reference}\')">{uri}</a> ({size} bytes, sha256={sha256})</li>\n')
             f.write('</ul>\n')
     
             f.write('<script>\n')
@@ -153,7 +190,10 @@ class MantarayIndexHTMLGenerator:
             f.write('    alert("File not found: " + uri);\n')
             f.write('  }\n')
             f.write('}\n')
-    
+
+            f.write('window.addEventListener("load", openFileByUri);\n')
+            f.write('window.addEventListener("hashchange", openFileByUri, false);\n')
+
             f.write('</script>\n</body>\n</html>\n')
     
         print(f"Generated index file {self.output_html_path}")
