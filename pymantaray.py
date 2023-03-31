@@ -140,6 +140,9 @@ class MantarayIndexHTMLGenerator:
             f.write('<h1>Swarmsync Index</h1>\n')
             f.write('<input id="uri-input" type="text" placeholder="Enter file URI" />\n')
             f.write('<button onclick="openFileByUri()">Open File</button>\n')
+    
+            f.write('<div id="indexContainer" class="index hidden">\n')
+
             f.write('<ul>\n')
     
             for entry in json.loads(index_data).values():
@@ -175,7 +178,10 @@ class MantarayIndexHTMLGenerator:
             f.write('    viewer.onload = function() {\n')
             f.write('      URL.revokeObjectURL(url);\n')
             f.write('      if (uri && uri.includes("#")) {\n')
-            f.write('        document.getElementById("uri-input").value = decodeURIComponent(uri.split("#")[1]);\n')
+            f.write('        var hash = uri.split("#")[1];\n')
+            f.write('        if (hash === "show") {\n')
+            f.write('          document.getElementById("uri-input").value = decodeURIComponent(uri.split("#")[1]);\n')
+            f.write('        }\n')
             f.write('      }\n')
             f.write('    };\n')
             f.write('  };\n')
@@ -194,13 +200,30 @@ class MantarayIndexHTMLGenerator:
             f.write('  if (!uri || typeof uri !== "string") {\n')
             f.write('    return;\n')
             f.write('  }\n')
-            f.write('  if (reference) {\n')
+            f.write('  if (uri.endswith("#show")) {\n')
+            f.write('    document.querySelector(".index").classList.toggle("hidden");\n')
+            f.write('  } else if (reference) {\n')
             f.write('    loadFileByReference(reference, uri);\n')
             f.write('  } else {\n')
             f.write('    alert("File not found: " + uri);\n')
             f.write('  }\n')
             f.write('}\n')
 
+            f.write('function toggleIndexVisibility() {\n')
+            f.write('    const indexContainer = document.getElementById("indexContainer");\n')
+            f.write('    const show = window.location.hash === "#show";\n')
+            f.write('\n')
+            f.write('    if (show) {\n')
+            f.write('        indexContainer.style.display = "block";\n')
+            f.write('    } else {\n')
+            f.write('        indexContainer.style.display = "none";\n')
+            f.write('    }\n')
+            f.write('    indexContainer.style.position = show ? "" : "absolute";\n')
+            f.write('    indexContainer.style.visibility = show ? "" : "hidden";\n')
+            f.write('}\n')
+
+            f.write('window.addEventListener("load", toggleIndexVisibility);\n')
+            f.write('window.addEventListener("hashchange", toggleIndexVisibility, false);\n')
             f.write('window.addEventListener("load", openFileByUri);\n')
             f.write('window.addEventListener("hashchange", openFileByUri, false);\n')
 
