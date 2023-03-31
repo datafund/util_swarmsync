@@ -161,10 +161,10 @@ class MantarayIndexHTMLGenerator:
             f.write('  }\n')
             f.write('  return uriToReference;\n')
             f.write('}\n')
-    
+            
             f.write('const uriToReference = getUriToReference(mantarayData);\n')
-    
-            f.write('function loadFileByReference(reference) {\n')
+            
+            f.write('function loadFileByReference(reference, uri) {\n')
             f.write('  var xhr = new XMLHttpRequest();\n')
             f.write('  xhr.open("GET", window.location.origin + "/bzz/" + reference + "/", true);\n')
             f.write('  xhr.responseType = "blob";\n')
@@ -174,18 +174,28 @@ class MantarayIndexHTMLGenerator:
             f.write('    var viewer = window.open(url, "_blank");\n')
             f.write('    viewer.onload = function() {\n')
             f.write('      URL.revokeObjectURL(url);\n')
+            f.write('      if (uri && uri.includes("#")) {\n')
+            f.write('        document.getElementById("uri-input").value = decodeURIComponent(uri.split("#")[1]);\n')
+            f.write('      }\n')
             f.write('    };\n')
             f.write('  };\n')
             f.write('  xhr.send();\n')
+            f.write('  if (uri && uri.includes("#")) {\n')
+            f.write('    window.location.hash = "#" + encodeURIComponent(uri.split("#")[1]);\n')
+            f.write('  } else {\n')
+            f.write('    window.location.hash = "";\n')
+            f.write('  }\n')
             f.write('}\n')
-    
+            
             f.write('function openFileByUri() {\n')
             f.write('  const uriInput = document.getElementById("uri-input");\n')
-            f.write('  const uri = uriInput.value;\n')
+            f.write('  const uri = uriInput.value || decodeURIComponent(window.location.hash.slice(1));\n')
             f.write('  const reference = uriToReference[uri];\n')
-    
+            f.write('  if (!uri || typeof uri !== "string") {\n')
+            f.write('    return;\n')
+            f.write('  }\n')
             f.write('  if (reference) {\n')
-            f.write('    loadFileByReference(reference);\n')
+            f.write('    loadFileByReference(reference, uri);\n')
             f.write('  } else {\n')
             f.write('    alert("File not found: " + uri);\n')
             f.write('  }\n')
