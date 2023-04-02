@@ -187,7 +187,7 @@ class MantarayIndexHTMLGenerator:
 
             f.write('<div class="background"></div>\n')
             
-            f.write('<h1>Swarmsync Index</h1>\n')
+            f.write('<h1><a href="#show">Swarmsync Index</a></h1>\n')
             f.write('<input type="text" id="uri-input" onkeyup="searchEntries()" placeholder="Enter file URI...">\n')
             f.write('<button onclick="openFileByUri()">Open File</button>\n')
     
