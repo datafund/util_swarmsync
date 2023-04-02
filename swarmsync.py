@@ -9,6 +9,7 @@ from secrets import token_hex
 from termcolor import colored
 from collections import OrderedDict
 from pymantaray import MantarayIndex,Entry,MantarayIndexHTMLGenerator
+from typing import List
 
 __version__ = '0.0.5.r3'
 
@@ -292,6 +293,37 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     finally:
         sem.release()
 
+async def directupload(file: FileManager, url: str, session: aiohttp.ClientSession):
+    global tag
+    res=None
+    MIME = "text/html"
+
+    headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
+             "swarm-postage-batch-id": args.stamp }
+    if tag is not None:
+        if bool(tag) != False:
+            headers.update({ "swarm-tag": tag.__str__() })
+    headers.update({ "swarm-pin": "True" })
+    if args.xbee_header:
+        headers.update({ "x-bee-node": args.xbee_header })
+    n_file = re.sub('[^A-Za-z0-9-._]+', '_', os.path.basename(file.name))
+    try:
+        async with session.post(url + '?name=' + n_file,
+                                headers=headers, data=file.file_reader()) as res:
+            if 200 <= res.status <= 300:
+                ref = await res.text()
+                if len(ref) < 64:
+                    #something is wrong
+                    print('Lenght of response is not correct! ', res.status)
+                else:
+                    print('Reference: ', ref)
+            else:
+                print('\n\n An error occured: ', res.status)
+    except Exception as e:
+        print(e)
+    finally:
+        return res
+
 async def async_check(scheduled, url: str):
     global display,args
     sem = asyncio.Semaphore(args.count)
@@ -311,6 +343,13 @@ async def async_upload(scheduled, urll):
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
     print(f'\nitems uploaded ({len(res)})')
+
+async def oneupload(scheduled: List[Path], urll):
+    global args
+    l_url = list(islice(cycle(urll), len(scheduled)))
+    async with aiohttp.ClientSession() as session:
+        res = await asyncio.gather(*[directupload(FileManager(str(file)), url, session) for file, url in zip(scheduled, l_url)])
+        return res
 
 async def async_download(references, paths, urll, sha256l):
     global display,args
@@ -458,7 +497,7 @@ def main():
     get_size()
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
-def upload():
+def upload(args):
     global tag,address
     if args.path:
         print ("path: ", args.path)
@@ -511,7 +550,7 @@ def upload():
     prepare()
     main()
 
-def show():
+def show(args):
     if 'todo' in args.s:
       get = read_dict(TODO)
       print(json.dumps(get, indent=4))
@@ -528,7 +567,7 @@ def show():
         asyncio.run(check_tag(normalize_url(args.beeurl, 'tags/'), args.tag))
         quit()
 
-def check():
+def check(args):
     global url,display
     if args.count:
       print ("count: ", args.count)
@@ -566,7 +605,7 @@ def check():
     if retry != []:
         write_list(RETRY, retry)
 
-def download():
+def download(args):
     global display
     if args.count:
         print ("count: ", args.count)
@@ -607,7 +646,8 @@ def download():
     loop.close()
     print('Time spent downloading:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
-def mantaray():
+def mantaray(args):
+    global display
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     index = loop.run_until_complete(create_mantaray_index(RESPONSES, MANTARAY))
@@ -618,86 +658,99 @@ def mantaray():
         print('Error creating or updating index.')
     index_html_generator = MantarayIndexHTMLGenerator(MANTARAY, INDEX, baseurl='./')
     index_html_generator.generate()
+    choice = input('Do you want to upload the index.html [y]es/[n]o:').lower()
+    if choice in yes:
+        urll = []
+        if args.beeurl != 'http://localhost:1633':
+            urls = args.beeurl.split(",")
+            for l in urls:
+                urll.append(normalize_url(l, 'bzz'))
+            print ("url: ", urll)
+        else:
+            choice = input('Enter beeurl: ').lower()
+            urll = [normalize_url(choice, 'bzz')]
 
-# Initialize parser
+        start = time.time()
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(oneupload([INDEX], urll))
+        end = time.time()
+        loop.run_until_complete(asyncio.sleep(0.250))
+        loop.close()
+
+
+# Initialize the parser and subparsers
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
+# Add common arguments for all subparsers
+common_arguments = [
+    ('--no-local', {'action': 'store_true', 'help': 'save swarmsync files in home folder'}),
+    ('-u', '--beurl', {'type': str, 'help': 'enter http address of bee. i.e. http://0:1633', 'default':'http://localhost:1633'}),
+    ('-c', '--count', {'type': int, 'help': 'number of concurrent tasks', 'default': 10}),
+]
+
+# Utility function to add common arguments to subparsers
+def add_common_arguments(subparser):
+    subparser.add_argument('--no-local', action='store_true', help='save swarmsync files in home folder', default=False)
+    subparser.add_argument('-u', '--beeurl', type=str, help='enter http address of bee. i.e. http://localhost:1633', default='http://localhost:1633')
+    subparser.add_argument('-c', '--count', type=int, help='number of concurrent tasks', default=10)
+    subparser.add_argument("-S", "--stamp", type=str, help="enter bee stamp id", default="0000000000000000000000000000000000000000000000000000000000000000")
+    subparser.add_argument('--xbee-header', action='store_true', help='add xbee header to the file')
+
+
+
+# Version argument
 parser.add_argument('-v', '--version', action='version',
                     version='%(prog)s {version}'.format(version=__version__))
 
-parser.add_argument('--no-local', action='store_true', help='save swarmsync files in home folder')
-
-### show
-parser_show = subparsers.add_parser('show',
-                                    help='print values of todo,responses or retrievables')
-parser_show.add_argument('s', type=str, help = """enter string string name to display.
-                         options: todo, responses, retrievable""",
-                         choices=['todo', 'responses', 'retrievable', 'size'],
-                         metavar='show', default='responses')
+# Show subparser
+parser_show = subparsers.add_parser('show', help='print values of todo, responses or retrievables')
+parser_show.add_argument('s', type=str, help='enter string string name to display. options: todo, responses, retrievable',
+                         choices=['todo', 'responses', 'retrievable', 'size'], metavar='show', default='responses')
 parser_show.add_argument("-s", "--saved-tag", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
 parser_show.add_argument("-t", "--tag", type=str, required=False, help="enter tag uid to fetch info about", default="")
-parser_show.set_defaults(func=show)
+parser_show.set_defaults(func=lambda parsed_args: show(parsed_args))
+add_common_arguments(parser_show)
 
-### download
-parser_download = subparsers.add_parser('download',
-                                    help='download everything from responses list')
-parser_download.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
-                          ie. http://0:1633""", default="http://0:1633")
-parser_download.add_argument("-c", "--count", type=int, required=False,
-                          help = "number of concurrent download", default=10)
-parser_download.set_defaults(func=download)
+# Download subparser
+parser_download = subparsers.add_parser('download', help='download everything from responses list')
+parser_download.set_defaults(func=lambda parsed_args: download(parsed_args))
+add_common_arguments(parser_download)
 
-#parser_test = subparsers.add_parser('test', help='test')
-#parser_test.set_defaults(func=test)
+# Check subparser
+parser_check = subparsers.add_parser('check', help='check if files can be downloaded using stewardship or check tag status')
+parser_check.set_defaults(func=lambda parsed_args: check(parsed_args))
+add_common_arguments(parser_check)
 
-### check
-parser_check = subparsers.add_parser('check',
-                                     help='check if files can be downloaded using stewardship or check tag status')
-parser_check.set_defaults(func=check)
-parser_check.add_argument("-u", "--beeurl", type=str, help =  """enter http address of bee.
-                          ie. http://0:1633""", default="http://0:1633")
-parser_check.add_argument("-c", "--count", type=int, required=False,
-                          help = "number of concurrent uploads", default=10)
-### upload
+# Upload subparser
 parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
-parser_upload.add_argument("-p", "--path",type=str,
-                           help = "enter path to folder to be uploaded.", default=".")
-parser_upload.add_argument("-u", "--beeurl", type=str, help = """enter http address of bee. separate multiple bees with comma.
-                          ie. http://0:1633""", default="http://0:1633")
-parser_upload.add_argument("-c", "--count", type=int,
-                           help = "number of concurrent uploads", default=10)
-parser_upload.add_argument("-s", "--search", type=str,
-                           help = "search param(* or *.jpg or somename.txt", default="*.*")
-parser_upload.add_argument("-S", "--stamp", type=str,
-                           help = "enter bee stamp id",
-                           default="0000000000000000000000000000000000000000000000000000000000000000")
+parser_upload.add_argument("-p", "--path", type=str, help="enter path to folder to be uploaded.", default=".")
+parser_upload.add_argument("-s", "--search", type=str, help="search param(* or *.jpg or somename.txt", default="*.*")
 parser_upload.add_argument("-P", "--pin", action=argparse.BooleanOptionalAction, help="should files be pinned", required=False, default=False)
-parser_upload.add_argument("-t", "--tag",
-                           help = """enter a uid tag for upload. if empty a new tag will be created.
-                                     use --no-tag if you dont want any tag.""")
+parser_upload.add_argument("-t", "--tag", help="enter a uid tag for upload. if empty a new tag will be created. use --no-tag if you dont want any tag.")
 parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
-parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
-                           default="")
-parser_upload.add_argument("-x", "--xbee-header", type=str, help="add x-bee-node header",
-                           default="")
+parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64", default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
-parser_upload.set_defaults(func=upload)
-### mantaray
+parser_upload.set_defaults(func=lambda parsed_args: upload(parsed_args))
+add_common_arguments(parser_upload)
+
+# Mantaray subparser
 parser_mantaray = subparsers.add_parser('mantaray', help='manage mantaray index')
-parser_mantaray.add_argument("-p", "--path",type=str,
-                           help = "enter path to folder to be uploaded.", default=".")
-parser_mantaray.set_defaults(func=mantaray)
+parser_mantaray.set_defaults(func=lambda parsed_args: mantaray(parsed_args))
+add_common_arguments(parser_mantaray)
 
-if len(sys.argv)==1:
-  parser.print_help(sys.stderr)
-  sys.exit(1)
+# Print help message and exit if no arguments are provided
+if len(sys.argv) == 1:
+    parser.print_help(sys.stderr)
+    sys.exit(1)
 
+# Parse the arguments, initialize paths, and call the function associated with the provided subparser
 args = parser.parse_args()
 init_paths(args.no_local)
 if args.func:
-    args.func()
+    args.func(args)
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO)
 
