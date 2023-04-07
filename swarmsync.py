@@ -144,6 +144,7 @@ class FileManager():
                 self.sha256.update(chunk)
                 yield chunk
                 chunk = await f.read(chunk_size)
+                self.sha256.update(chunk)
             self.pbar.close()
 
 def get_size():
@@ -222,8 +223,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 async with aiofiles.open(file, mode='wb') as f:
                     await f.write(r_data)
             else:
-                res.status = 409
-                res.reason = 'sha256'
+                print(f"Download failed: sha mismatch detected, file was not saved")
         else:
             Path(file).parent.mkdir(exist_ok=True)
             async with aiofiles.open(file, mode='wb') as f:
@@ -271,11 +271,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
-                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest(), "Content-Type": MIME }
+                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest(), "contentType": MIME }
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
                 if len(ref) == 64:
-                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": file.sha256.hexdigest(), "Content-Type": MIME }
+                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": file.sha256.hexdigest(), "contentType": MIME }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
@@ -730,7 +730,10 @@ parser_upload.add_argument("-s", "--search", type=str, help="search param(* or *
 parser_upload.add_argument("-P", "--pin", action=argparse.BooleanOptionalAction, help="should files be pinned", required=False, default=False)
 parser_upload.add_argument("-t", "--tag", help="enter a uid tag for upload. if empty a new tag will be created. use --no-tag if you dont want any tag.")
 parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
-parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64", default="")
+parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
+                           default="")
+parser_upload.add_argument("-x", "--xbee-header", type=str, help="add x-bee-node header",
+                           default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
 parser_upload.set_defaults(func=lambda parsed_args: upload(parsed_args))
