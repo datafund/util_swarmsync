@@ -255,9 +255,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     except Exception as e:
         print(f"Error during hash check or file move: {e}")
     finally:
-        # Ensure the temporary file is removed in case of any exceptions
-        if os.path.exists(temp_file.name):
-            os.remove(temp_file.name)
         display.update()
         sem.release()
 
