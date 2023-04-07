@@ -10,6 +10,8 @@ from termcolor import colored
 from collections import OrderedDict
 from pymantaray import MantarayIndex,Entry,MantarayIndexHTMLGenerator
 from typing import List
+from contextlib import contextmanager
+
 
 __version__ = '0.0.5.r3'
 
@@ -53,6 +55,15 @@ class q_dict(dict):
 
     def __repr__(self):
         return json.dumps(self, ensure_ascii=False)
+
+@contextmanager
+def managed_temp_file(*args, **kwargs):
+    temp_file = tempfile.NamedTemporaryFile(*args, **kwargs, delete=False)
+    try:
+        yield temp_file
+    finally:
+        if os.path.exists(temp_file.name):
+            os.remove(temp_file.name)
 
 def init_paths(local):
     global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY, MANTARAY, INDEX
@@ -222,7 +233,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             buffer_size = 65536  # Adjust the buffer size according to your needs
 
             # Create a temporary file to store the downloaded content
-            with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
+            with managed_temp_file(mode='wb') as temp_file:
                 async with aiofiles.open(temp_file.name, mode='wb') as f:
                     file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
                     async for chunk in res.content.iter_chunked(buffer_size):
@@ -240,12 +251,13 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 os.remove(temp_file.name)
                 res.status = 409
                 res.reason = 'sha256'
-
             return res
     except Exception as e:
-        # handle error(s) according to your needs
-        print(e)
+        print(f"Error during hash check or file move: {e}")
     finally:
+        # Ensure the temporary file is removed in case of any exceptions
+        if os.path.exists(temp_file.name):
+            os.remove(temp_file.name)
         display.update()
         sem.release()
 
@@ -370,7 +382,8 @@ async def async_download(references, paths, urll, sha256l):
     sem = asyncio.Semaphore(args.count)
     session_timeout=aiohttp.ClientTimeout(total=14400)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
-        res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)])
+        res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)],
+            return_exceptions=True)
     display.close()
     print(f'\nitems to download ({len(res)})')
     status = []
