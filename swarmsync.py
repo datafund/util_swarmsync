@@ -10,7 +10,6 @@ from termcolor import colored
 from collections import OrderedDict
 from pymantaray import MantarayIndex,Entry,MantarayIndexHTMLGenerator
 from typing import List
-from contextlib import contextmanager
 
 
 __version__ = '0.0.5.r3'
@@ -55,15 +54,6 @@ class q_dict(dict):
 
     def __repr__(self):
         return json.dumps(self, ensure_ascii=False)
-
-@contextmanager
-def managed_temp_file(*args, **kwargs):
-    temp_file = tempfile.NamedTemporaryFile(*args, **kwargs, delete=False)
-    try:
-        yield temp_file
-    finally:
-        if os.path.exists(temp_file.name):
-            os.remove(temp_file.name)
 
 def init_paths(local):
     global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY, MANTARAY, INDEX
@@ -233,14 +223,14 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             buffer_size = 65536  # Adjust the buffer size according to your needs
 
             # Create a temporary file to store the downloaded content
-            with managed_temp_file(mode='wb') as temp_file:
-                async with aiofiles.open(temp_file.name, mode='wb') as f:
-                    file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
-                    async for chunk in res.content.iter_chunked(buffer_size):
-                        if sha256:
-                            # Update the hash object with the current chunk
-                            file_sha256.update(chunk)
-                        await f.write(chunk)
+            temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
+            async with aiofiles.open(temp_file.name, mode='wb') as f:
+                file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
+                async for chunk in res.content.iter_chunked(buffer_size):
+                    if sha256:
+                        # Update the hash object with the current chunk
+                        file_sha256.update(chunk)
+                    await f.write(chunk)
 
             # Compare the calculated hash with the provided hash
             if sha256 and sha256 == file_sha256.hexdigest():
@@ -254,6 +244,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             return res
     except Exception as e:
         print(f"Error during hash check or file move: {e}")
+        if os.path.exists(temp_file.name):
+            os.remove(temp_file.name)
     finally:
         display.update()
         sem.release()
