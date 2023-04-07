@@ -2,7 +2,7 @@
 # encoding: utf-8
 from tqdm import tqdm
 import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
-import re,hashlib
+import re,hashlib,tempfile,shutil
 from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
@@ -362,7 +362,8 @@ async def async_download(references, paths, urll, sha256l):
     print(f'\nitems to download ({len(res)})')
     status = []
     for i in res:
-        status.append(i.status)
+        if i is not None:
+            status.append(i.status)
     status = [str(x) for x in status]
     print(f'sha256 checksum mismatches ({status.count("409")})')
     print(f'404 errors ({status.count("404")})')
@@ -451,7 +452,7 @@ async def create_mantaray_index(json_file_path: str, index_file_path: str) -> bo
             reference = entry_data.get('reference')
             size = entry_data.get('size')
             sha256 = entry_data.get('sha256')
-            content_type = entry_data.get('content_type', 'application/octet-stream')
+            content_type = entry_data.get('contentType', 'application/octet-stream')
             entry = Entry(file, reference, size, sha256, content_type)
             index.add_entry(entry.to_dict())
     else:
@@ -474,16 +475,14 @@ async def create_mantaray_index(json_file_path: str, index_file_path: str) -> bo
 
     return True
 
-def main():
-    global scheduled,todo
+def main_common():
+    global scheduled, todo, urll
     cleanup(RESPONSES)
     if args.reupload:
         scheduled = read_dict(RETRY)
     else:
         todo = read_dict(TODO)
-        scheduled=[]
-        for x in todo:
-          scheduled.append(x['file'])
+        scheduled = [x['file'] for x in todo]
 
     print('\n\n\n')
     start = time.time()
@@ -497,8 +496,11 @@ def main():
     get_size()
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
 
-def upload(args):
-    global tag,address
+def main():
+    main_common()
+
+def process_common_args():
+    global tag, address
     if args.path:
         print ("path: ", args.path)
     if args.count:
@@ -509,44 +511,55 @@ def upload(args):
         print ("stamp: ", args.stamp)
     if args.pin:
         print ("pin: ", args.pin)
-    if args.address:
-        address=args.address
     if args.tag:
-        tag=args.tag
+        tag = args.tag
+    if args.no_tag != 'True':
+        print("DEBUG3")
+        handle_tag()
+    if args.address:
+        address = args.address
+        print("eth address:", address)
+    else:
+        address = open(ADDRESS).read().strip('"')
+        print("eth address:", address)
     if args.beeurl:
-        urls = args.beeurl.split(",")
-        if len(urls) > 1 and args.no_tag != True:
-            choice = input('Tagging with multiple bees is not supported. Continue without tagging? [Y]es/[N]o: ').lower()
-            if choice in yes:
-                args.no_tag = True
-            else:
-                quit()
-        if len(urls) > 1 and args.stamp:
-            choice = input('Uploading to multiple bees is supported only without stamp (use gateway-proxy). Continue without? [Y]es/[N]o: ').lower()
-            if choice in yes:
-                args.stamp = ""
-            else:
-                quit()
-        for l in urls:
-            urll.append(normalize_url(l, 'bzz'))
-        print ("url: ", urll)
-    if args.no_tag != True:
-        if args.tag == "" or not args.tag:
-            if Path(ADDRESS).is_file() and not address:
-                address = read_dict(ADDRESS)
-                print ('using existing address :', address)
-            else:
-                choice = input('No address detected. Create a random address ? [Y]es/[n]o:').lower()
-                if choice in yes:
-                  address = token_hex(32)
-                else:
-                  print('Error: Enter an address as argument')
-            if address:
-                tag = asyncio.run(get_tag(args.beeurl, address))
-                write_list(ADDRESS, address)
-            else:
-                print('Error: could not post tag to bee without an address')
-                quit()
+        handle_beeurl(args, args.command.__name__)
+
+def handle_beeurl(args, command):
+    global urll
+    endpoints = {
+        'upload': 'bzz',
+        'feed': 'feeds',
+        'check': 'stewardship',
+        'download': 'bzz',
+        'mantaray': 'bzz'
+    }
+    uri = endpoints.get(command, 'bzz')
+    urls = args.beeurl.split(",")
+    for l in urls:
+        urll.append(normalize_url(l, uri))
+    print("url: ", urll)
+
+def handle_tag():
+    global tag, address
+    if Path(ADDRESS).is_file() and not address:
+        address = read_dict(ADDRESS)
+        print('using existing address :', address)
+    else:
+        choice = input('No address detected. Create a random address ? [Y]es/[n]o:').lower()
+        if choice in yes:
+            address = token_hex(32)
+        else:
+            print('Error: Enter an eth address as command argument')
+    if address:
+        write_list(ADDRESS, address)
+        if not args.no_tag:
+            print('deb', args.no_tag)
+            tag = asyncio.run(get_tag(args.beeurl, address))
+
+
+def upload():
+    process_common_args()
     prepare()
     main()
 
@@ -686,7 +699,7 @@ subparsers = parser.add_subparsers()
 # Add common arguments for all subparsers
 common_arguments = [
     ('--no-local', {'action': 'store_true', 'help': 'save swarmsync files in home folder'}),
-    ('-u', '--beurl', {'type': str, 'help': 'enter http address of bee. i.e. http://0:1633', 'default':'http://localhost:1633'}),
+    ('-u', '--beeurl', {'type': str, 'help': 'enter http address of bee. i.e. http://0:1633', 'default':'http://localhost:1633'}),
     ('-c', '--count', {'type': int, 'help': 'number of concurrent tasks', 'default': 10}),
 ]
 
@@ -710,18 +723,20 @@ parser_show.add_argument('s', type=str, help='enter string string name to displa
                          choices=['todo', 'responses', 'retrievable', 'size'], metavar='show', default='responses')
 parser_show.add_argument("-s", "--saved-tag", action=argparse.BooleanOptionalAction, help="check the existing/stored tag uid", required=False, default=False)
 parser_show.add_argument("-t", "--tag", type=str, required=False, help="enter tag uid to fetch info about", default="")
-parser_show.set_defaults(func=lambda parsed_args: show(parsed_args))
 add_common_arguments(parser_show)
+parser_show.set_defaults(func=lambda parsed_args: show(parsed_args), command=show)
+
 
 # Download subparser
 parser_download = subparsers.add_parser('download', help='download everything from responses list')
-parser_download.set_defaults(func=lambda parsed_args: download(parsed_args))
 add_common_arguments(parser_download)
+parser_download.set_defaults(func=lambda parsed_args: download(parsed_args), command=download)
+
 
 # Check subparser
 parser_check = subparsers.add_parser('check', help='check if files can be downloaded using stewardship or check tag status')
-parser_check.set_defaults(func=lambda parsed_args: check(parsed_args))
 add_common_arguments(parser_check)
+parser_check.set_defaults(func=lambda parsed_args: check(parsed_args), command=check)
 
 # Upload subparser
 parser_upload = subparsers.add_parser('upload', help='upload folder and subfolders')
@@ -736,13 +751,13 @@ parser_upload.add_argument("-x", "--xbee-header", type=str, help="add x-bee-node
                            default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
-parser_upload.set_defaults(func=lambda parsed_args: upload(parsed_args))
 add_common_arguments(parser_upload)
+parser_upload.set_defaults(func=lambda parsed_args: upload(), command=upload)
 
 # Mantaray subparser
 parser_mantaray = subparsers.add_parser('mantaray', help='manage mantaray index')
-parser_mantaray.set_defaults(func=lambda parsed_args: mantaray(parsed_args))
 add_common_arguments(parser_mantaray)
+parser_mantaray.set_defaults(func=lambda parsed_args: mantaray(parsed_args), command=mantaray)
 
 # Print help message and exit if no arguments are provided
 if len(sys.argv) == 1:
