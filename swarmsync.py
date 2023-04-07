@@ -747,8 +747,6 @@ parser_upload.add_argument("-t", "--tag", help="enter a uid tag for upload. if e
 parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
 parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
                            default="")
-parser_upload.add_argument("-x", "--xbee-header", type=str, help="add x-bee-node header",
-                           default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
 add_common_arguments(parser_upload)
