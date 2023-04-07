@@ -214,21 +214,34 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     await sem.acquire()
     try:
         async with session.get(url + '/' + ref + '/') as res:
-            r_data = await res.read()
             if not 200 <= res.status <= 299:
                 return res
-        if sha256:
-            if sha256 == hashlib.sha256(r_data).hexdigest():
-                Path(file).parent.mkdir(exist_ok=True)
-                async with aiofiles.open(file, mode='wb') as f:
-                    await f.write(r_data)
-            else:
-                print(f"Download failed: sha mismatch detected, file was not saved")
-        else:
+
             Path(file).parent.mkdir(exist_ok=True)
-            async with aiofiles.open(file, mode='wb') as f:
-                await f.write(r_data)
-        return res
+
+            buffer_size = 65536  # Adjust the buffer size according to your needs
+
+            # Create a temporary file to store the downloaded content
+            with tempfile.NamedTemporaryFile(mode='wb', delete=False) as temp_file:
+                async with aiofiles.open(temp_file.name, mode='wb') as f:
+                    file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
+                    async for chunk in res.content.iter_chunked(buffer_size):
+                        if sha256:
+                            # Update the hash object with the current chunk
+                            file_sha256.update(chunk)
+                        await f.write(chunk)
+
+            # Compare the calculated hash with the provided hash
+            if sha256 and sha256 == file_sha256.hexdigest():
+                # Move the temporary file to the final destination if the hash matches
+                shutil.move(temp_file.name, file)
+            else:
+                # Delete the temporary file if the hash doesn't match
+                os.remove(temp_file.name)
+                res.status = 409
+                res.reason = 'sha256'
+
+            return res
     except Exception as e:
         # handle error(s) according to your needs
         print(e)
