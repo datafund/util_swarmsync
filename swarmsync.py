@@ -378,7 +378,11 @@ async def async_download(references, paths, urll, sha256l):
     status = []
     for i in res:
         if i is not None:
-            status.append(i.status)
+            if isinstance(i, Exception):
+                # Handle exceptions or print the exception message
+                print(f"Error: {i}")
+            else:
+                status.append(i.status)
     status = [str(x) for x in status]
     print(f'sha256 checksum mismatches ({status.count("409")})')
     print(f'404 errors ({status.count("404")})')
