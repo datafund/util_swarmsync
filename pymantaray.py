@@ -200,7 +200,9 @@ class MantarayIndexHTMLGenerator:
                 size = entry['size']
                 reference = entry['reference']
                 sha256 = entry['sha256']
-
+                if 'decrypt' in entry:
+                    decrypt_key = entry['decrypt']
+                    reference = reference + decrypt_key
                 f.write(f'<li><a href="#" onclick="loadFileByReference(\'{reference}\')">{uri}</a> ({size} bytes, sha256={sha256})</li>\n')
             f.write('</ul>\n')
     
