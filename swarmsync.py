@@ -400,6 +400,11 @@ def lst_to_dict(lst):
         res_dct[jsd]=jsd
     return res_dct
 
+def calculate_sha256(file_path):
+    with open(file_path, 'rb') as f:
+        file_data = f.read()
+    return hashlib.sha256(file_data).hexdigest()
+
 def clean_responses(file):
     data = read_dict(file)
     for i in range(len(data)):
@@ -415,6 +420,8 @@ def cleanup(file):
     clean = read_dict(file)
     for i in range(len(clean)):
         clean[i] = q_dict(clean[i])
+        if 'sha256' not in clean[i]:
+            clean[i]['sha256'] = calculate_sha256(clean[i]['file'])
     if clean is not None:
         clean = str_list = list(filter(None, clean))
         write_dict(file, str(clean))
@@ -533,7 +540,6 @@ def process_common_args():
     if args.tag:
         tag = args.tag
     if args.no_tag != 'True':
-        print("DEBUG3")
         handle_tag()
     if args.address:
         address = args.address
@@ -573,7 +579,6 @@ def handle_tag():
     if address:
         write_list(ADDRESS, address)
         if not args.no_tag:
-            print('deb', args.no_tag)
             tag = asyncio.run(get_tag(args.beeurl, address))
 
 
