@@ -651,6 +651,7 @@ def download(args):
         for l in urls:
             urll.append(normalize_url(l, 'bzz'))
         print ("url: ", urll)
+    cleanup(RESPONSES)
     download = read_dict(RESPONSES)
     references=[]
     paths=[]
