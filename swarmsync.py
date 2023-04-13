@@ -401,9 +401,13 @@ def lst_to_dict(lst):
     return res_dct
 
 def calculate_sha256(file_path):
+    sha256_hash = hashlib.sha256()
+    
     with open(file_path, 'rb') as f:
-        file_data = f.read()
-    return hashlib.sha256(file_data).hexdigest()
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    
+    return sha256_hash.hexdigest()
 
 def clean_responses(file):
     data = read_dict(file)
@@ -416,16 +420,19 @@ def clean_responses(file):
       write_dict(file, str(clean))
 
 def cleanup(file):
-    #sanitze responses if there was a failure
+    # Sanitize responses if there was a failure
     clean = read_dict(file)
+    
     for i in range(len(clean)):
         clean[i] = q_dict(clean[i])
-        if 'sha256' not in clean[i]:
+        if 'sha256' not in clean[i] and os.path.exists(clean[i]['file']):
             clean[i]['sha256'] = calculate_sha256(clean[i]['file'])
+    
     if clean is not None:
-        clean = str_list = list(filter(None, clean))
-        write_dict(file, str(clean))
-    clean_responses(file);
+        clean = list(filter(None, clean))
+        write_list(file, clean)
+    
+    clean_responses(file)
 
 def normalize_url(base: str, path: str):
     url = os.path.join(base, '')
