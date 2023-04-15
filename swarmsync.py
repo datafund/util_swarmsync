@@ -257,7 +257,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
 
         return res
     except asyncio.TimeoutError:
-        print(f"Timeout during download of {file}")
         if temp_file is not None and os.path.exists(temp_file.name):
             os.remove(temp_file.name)
         failed_downloads.append({'file': file})
@@ -393,7 +392,7 @@ async def async_download(references, paths, urll, sha256l):
     global display,args
     l_url = list(islice(cycle(urll), len(references)))
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(sock_read=300, total=3600)
+    session_timeout=aiohttp.ClientTimeout(total=3600)
     async with aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)],
             return_exceptions=True)
@@ -447,14 +446,18 @@ def cleanup(file):
     # Sanitize responses if there was a failure
     clean = read_dict(file)
     
+    correct_sha_count = 0
     for i in range(len(clean)):
         clean[i] = q_dict(clean[i])
-        if 'file' in clean[i] and os.path.exists(clean[i]['file']):
+        
+        if correct_sha_count < 10 and 'file' in clean[i] and os.path.exists(clean[i]['file']):
             file_sha256 = calculate_sha256(clean[i]['file'])
 
             if 'sha256' not in clean[i] or clean[i]['sha256'] != file_sha256:
                 clean[i]['sha256'] = file_sha256
-    
+            else:
+                correct_sha_count += 1
+
     if clean is not None:
         clean = list(filter(None, clean))
         write_list(file, clean)
