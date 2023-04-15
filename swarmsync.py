@@ -56,7 +56,7 @@ class q_dict(dict):
         return json.dumps(self, ensure_ascii=False)
 
 def init_paths(local):
-    global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY, MANTARAY, INDEX
+    global home, ALLFILES, TODO, ADDRESS, TAG, RESPONSES, RETRIEVABLE, RETRY, MANTARAY, INDEX, FAILED_DL
     if local != True:
         home = Path('.').resolve() / '.swarmsync'
     else:
@@ -64,6 +64,7 @@ def init_paths(local):
 
     ALLFILES = home / 'allfiles.json'
     TODO = home / 'todo.json'
+    FAILED_DL = home / 'failed_dl.json'
     ADDRESS = home / 'address'
     TAG = home / 'tag.json'
     RESPONSES = home / 'responses.json'
@@ -80,7 +81,7 @@ def init_paths(local):
 
 def prepare():
   global pin,stamp
-  global home,ALLFILES,TODO,ADDRESS,TAG,RESPONSES,RETRIEVABLE,RETRY
+  global home,ALLFILES,TODO,FAILED_DL,ADDRESS,TAG,RESPONSES,RETRIEVABLE,RETRY
   pin=args.pin
   stamp=args.stamp
 
@@ -212,10 +213,13 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
 
 async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256):
     global display
-    await sem.acquire()
+    temp_file = None
+    failed_downloads = []
     try:
-        async with session.get(url + '/' + ref + '/') as res:
+        async with sem:  # Acquire the semaphore
+            res = await session.get(url + '/' + ref + '/')
             if not 200 <= res.status <= 299:
+                failed_downloads.append({'file': file})
                 return res
 
             Path(file).parent.mkdir(exist_ok=True)
@@ -225,30 +229,50 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             # Create a temporary file to store the downloaded content
             temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
             async with aiofiles.open(temp_file.name, mode='wb') as f:
-                file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
                 async for chunk in res.content.iter_chunked(buffer_size):
-                    if sha256:
-                        # Update the hash object with the current chunk
-                        file_sha256.update(chunk)
                     await f.write(chunk)
 
-            # Compare the calculated hash with the provided hash
-            if sha256 and sha256 == file_sha256.hexdigest():
-                # Move the temporary file to the final destination if the hash matches
-                shutil.move(temp_file.name, file)
-            else:
-                # Delete the temporary file if the hash doesn't match
-                os.remove(temp_file.name)
-                res.status = 409
-                res.reason = 'sha256'
-            return res
+            # Calculate the SHA-256 hash of the downloaded file
+            if sha256:
+                file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
+                with open(temp_file.name, 'rb') as f:
+                    while True:
+                        chunk = f.read(buffer_size)
+                        if not chunk:
+                            break
+                        file_sha256.update(chunk)
+
+                # Compare the calculated hash with the provided hash
+                if sha256 != file_sha256.hexdigest():
+                    #print(f"Deleting temp file {temp_file.name} due to hash mismatch")  # Debug print
+                    os.remove(temp_file.name)
+                    res.status = 409
+                    res.reason = 'sha256'
+                    failed_downloads.append({'file': file})
+                    return res
+
+            # Move the temporary file to the final destination
+            #print(f"Moving temp file {temp_file.name} to {file}")  # Debug print
+            shutil.move(temp_file.name, file)
+
+        return res
+    except asyncio.TimeoutError:
+        print(f"Timeout during download of {file}")
+        if temp_file is not None and os.path.exists(temp_file.name):
+            os.remove(temp_file.name)
+        failed_downloads.append({'file': file})
+        return None  # Return None instead of raising an exception
     except Exception as e:
         print(f"Error during hash check or file move: {e}")
-        if os.path.exists(temp_file.name):
+        if temp_file is not None and os.path.exists(temp_file.name):
             os.remove(temp_file.name)
+        failed_downloads.append({'file': file})
     finally:
+        if sem.locked():
+            sem.release()
         display.update()
-        sem.release()
+        write_list(FAILED_DL, failed_downloads)
+
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
@@ -285,11 +309,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
 
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
-                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": file.sha256.hexdigest(), "contentType": MIME }
+                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME }
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
                 if len(ref) == 64:
-                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": file.sha256.hexdigest(), "contentType": MIME }
+                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
@@ -369,8 +393,8 @@ async def async_download(references, paths, urll, sha256l):
     global display,args
     l_url = list(islice(cycle(urll), len(references)))
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=14400)
-    async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
+    session_timeout=aiohttp.ClientTimeout(sock_read=300, total=3600)
+    async with aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)],
             return_exceptions=True)
     display.close()
@@ -425,8 +449,11 @@ def cleanup(file):
     
     for i in range(len(clean)):
         clean[i] = q_dict(clean[i])
-        if 'sha256' not in clean[i] and os.path.exists(clean[i]['file']):
-            clean[i]['sha256'] = calculate_sha256(clean[i]['file'])
+        if 'file' in clean[i] and os.path.exists(clean[i]['file']):
+            file_sha256 = calculate_sha256(clean[i]['file'])
+
+            if 'sha256' not in clean[i] or clean[i]['sha256'] != file_sha256:
+                clean[i]['sha256'] = file_sha256
     
     if clean is not None:
         clean = list(filter(None, clean))
