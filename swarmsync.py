@@ -243,6 +243,9 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                         res = web.Response(status=408, reason='timeout')
                         return res
 
+                    # Ensure the file is fully downloaded
+                    await res.content.read()
+                    
                 # Calculate the SHA-256 hash of the downloaded file
                 if sha256:
                     file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
