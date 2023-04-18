@@ -213,7 +213,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         display.update()
         sem.release()
 
-async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, file_download_timeout):
+async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, file_download_timeout=1800):
     global display
     temp_file = None
     try:
