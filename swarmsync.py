@@ -213,58 +213,57 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         display.update()
         sem.release()
 
-async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256):
+async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, file_download_timeout=1800):
     global display
     temp_file = None
     try:
         async with sem:  # Acquire the semaphore
-            res = await session.get(url + '/' + ref + '/')
-            if not 200 <= res.status <= 299:
-                failed_downloads.append({'file': file})
-                return res
-
-            Path(file).parent.mkdir(exist_ok=True)
-
-            buffer_size = 65536  # Adjust the buffer size according to your needs
-
-            # Create a temporary file to store the downloaded content
-            temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
-            async with aiofiles.open(temp_file.name, mode='wb') as f:
-                async for chunk in res.content.iter_chunked(buffer_size):
-                    if not chunk:
-                        break
-                    await f.write(chunk)
-                    await asyncio.sleep(0) 
-
-            # Calculate the SHA-256 hash of the downloaded file
-            if sha256:
-                file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
-                with open(temp_file.name, 'rb') as f:
-                    while True:
-                        chunk = f.read(buffer_size)
-                        if not chunk:
-                            break
-                        file_sha256.update(chunk)
-
-                # Compare the calculated hash with the provided hash
-                if sha256 != file_sha256.hexdigest():
-                    #print(f"Deleting temp file {temp_file.name} due to hash mismatch")  # Debug print
-                    os.remove(temp_file.name)
-                    res.status = 409
-                    res.reason = 'sha256'
+            async with session.get(url + '/' + ref + '/') as res:
+                if not 200 <= res.status <= 299:
                     failed_downloads.append({'file': file})
                     return res
 
-            # Move the temporary file to the final destination
-            #print(f"Moving temp file {temp_file.name} to {file}")  # Debug print
-            shutil.move(temp_file.name, file)
+                Path(file).parent.mkdir(exist_ok=True)
 
-        return res
-    except asyncio.TimeoutError:
-        if temp_file is not None and os.path.exists(temp_file.name):
-            os.remove(temp_file.name)
-        failed_downloads.append({'file': file})
-        res = web.Response(status=408, reason='timeout')
+                buffer_size = 65536  # Adjust the buffer size according to your needs
+
+                # Create a temporary file to store the downloaded content
+                temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
+                async with aiofiles.open(temp_file.name, mode='wb') as f:
+                    try:
+                        async for chunk in res.content.iter_chunked(buffer_size):
+                            if not chunk:
+                                break
+                            await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
+                    except asyncio.TimeoutError:
+                        print(f"Timeout during download of {file}")
+                        if temp_file is not None and os.path.exists(temp_file.name):
+                            os.remove(temp_file.name)
+                        failed_downloads.append({'file': file})
+                        res = web.Response(status=408, reason='timeout')
+                        return res
+
+                # Calculate the SHA-256 hash of the downloaded file
+                if sha256:
+                    file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
+                    with open(temp_file.name, 'rb') as f:
+                        while True:
+                            chunk = f.read(buffer_size)
+                            if not chunk:
+                                break
+                            file_sha256.update(chunk)
+
+                    # Compare the calculated hash with the provided hash
+                    if sha256 != file_sha256.hexdigest():
+                        os.remove(temp_file.name)
+                        res.status = 409
+                        res.reason = 'sha256'
+                        failed_downloads.append({'file': file})
+                        return res
+
+                # Move the temporary file to the final destination
+                shutil.move(temp_file.name, file)
+
         return res
     except Exception as e:
         print(f"Error during hash check or file move: {e}")
@@ -276,7 +275,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             sem.release()
         display.update()
         write_list(FAILED_DL, failed_downloads)
-
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
@@ -397,7 +395,7 @@ async def async_download(references, paths, urll, sha256l):
     global display,args
     l_url = list(islice(cycle(urll), len(references)))
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=3600)
+    session_timeout=aiohttp.ClientTimeout(total=86400)
     async with aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)],
             return_exceptions=True)
