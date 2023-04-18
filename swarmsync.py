@@ -10,6 +10,7 @@ from termcolor import colored
 from collections import OrderedDict
 from pymantaray import MantarayIndex,Entry,MantarayIndexHTMLGenerator
 from typing import List
+from aiohttp import web
 
 
 __version__ = '0.0.5.r3'
@@ -20,6 +21,7 @@ address=""
 tag={}
 urll=[]
 all_errors=[]
+failed_downloads = []
 all_ok=""
 
 def append_list(file, a_list):
@@ -214,7 +216,6 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
 async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256):
     global display
     temp_file = None
-    failed_downloads = []
     try:
         async with sem:  # Acquire the semaphore
             res = await session.get(url + '/' + ref + '/')
@@ -230,7 +231,10 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
             async with aiofiles.open(temp_file.name, mode='wb') as f:
                 async for chunk in res.content.iter_chunked(buffer_size):
+                    if not chunk:
+                        break
                     await f.write(chunk)
+                    await asyncio.sleep(0) 
 
             # Calculate the SHA-256 hash of the downloaded file
             if sha256:
@@ -260,7 +264,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         if temp_file is not None and os.path.exists(temp_file.name):
             os.remove(temp_file.name)
         failed_downloads.append({'file': file})
-        return None  # Return None instead of raising an exception
+        res = web.Response(status=408, reason='timeout')
+        return res
     except Exception as e:
         print(f"Error during hash check or file move: {e}")
         if temp_file is not None and os.path.exists(temp_file.name):
@@ -408,6 +413,7 @@ async def async_download(references, paths, urll, sha256l):
                 status.append(i.status)
     status = [str(x) for x in status]
     print(f'sha256 checksum mismatches ({status.count("409")})')
+    print(f'408 Timeout ({status.count("408")})')
     print(f'404 errors ({status.count("404")})')
     status_filtered = list(filter(lambda v: re.match('50.', v), status))
     print(f'50x ({len(status_filtered)})')
@@ -629,6 +635,7 @@ def show(args):
       get = read_dict(TODO)
       print(json.dumps(get, indent=4))
     if 'responses' in args.s:
+
       get = read_dict(RESPONSES)
       print(json.dumps(get, indent=4))
     if 'retrievable' in args.s:
