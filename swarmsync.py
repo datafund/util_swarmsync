@@ -223,6 +223,12 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                     failed_downloads.append({'file': file})
                     return res
 
+                # Check if the content length is 0
+                if res.content_length == 0:
+                    failed_downloads.append({'file': file})
+                    res = web.Response(status=410, reason='empty_file')
+                    return res
+
                 Path(file).parent.mkdir(exist_ok=True)
 
                 buffer_size = 65536  # Adjust the buffer size according to your needs
@@ -411,6 +417,7 @@ async def async_download(references, paths, urll, sha256l):
                 status.append(i.status)
     status = [str(x) for x in status]
     print(f'sha256 checksum mismatches ({status.count("409")})')
+    print(f'410 content-leght 0 ({status.count("410")})')
     print(f'408 Timeout ({status.count("408")})')
     print(f'404 errors ({status.count("404")})')
     status_filtered = list(filter(lambda v: re.match('50.', v), status))
