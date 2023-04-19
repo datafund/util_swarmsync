@@ -240,9 +240,9 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                             await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
                             total_bytes_read += len(chunk)
 
-                            # Ensure the file is fully downloaded
-                            if content_length > 0 and total_bytes_read == content_length:
-                                break
+                        # Ensure the file is fully downloaded
+                        if content_length > 0 and total_bytes_read != content_length:
+                            raise aiohttp.ClientPayloadError("Response payload is not completed")
                     except asyncio.TimeoutError:
                         print(f"Timeout during download of {file}")
                         if temp_file is not None and os.path.exists(temp_file.name):
