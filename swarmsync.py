@@ -266,8 +266,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
 
         return res
     except Exception as e:
-        if str(e) == "Response payload is not completed":
-            print(f"Empty file error: {e}")
+        if "Response payload is not completed" in str(e):
+            #print(f"Empty file error: {e}")
             failed_downloads.append({'file': file})
             res = web.Response(status=410, reason='empty_file')
             return res
