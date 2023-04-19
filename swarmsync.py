@@ -231,17 +231,13 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
                 async with aiofiles.open(temp_file.name, mode='wb') as f:
                     try:
-                        total_bytes_read = 0
-                        content_length = int(res.headers.get('Content-Length', 0))
-
                         async for chunk in res.content.iter_chunked(buffer_size):
                             if not chunk:
                                 break
                             await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
-                            total_bytes_read += len(chunk)
 
                         # Ensure the file is fully downloaded
-                        if content_length > 0 and total_bytes_read != content_length:
+                        if not res.content.at_eof():
                             raise aiohttp.ClientPayloadError("Response payload is not completed")
                     except asyncio.TimeoutError:
                         print(f"Timeout during download of {file}")
