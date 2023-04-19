@@ -223,12 +223,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                     failed_downloads.append({'file': file})
                     return res
 
-                # Check if the content length is 0
-                if res.content_length == 0:
-                    failed_downloads.append({'file': file})
-                    res = web.Response(status=410, reason='empty_file')
-                    return res
-
                 Path(file).parent.mkdir(exist_ok=True)
 
                 buffer_size = 65536  # Adjust the buffer size according to your needs
@@ -272,10 +266,17 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
 
         return res
     except Exception as e:
-        print(f"Error during hash check or file move: {e}")
-        if temp_file is not None and os.path.exists(temp_file.name):
-            os.remove(temp_file.name)
-        failed_downloads.append({'file': file})
+        if str(e) == "Response payload is not completed":
+            print(f"Empty file error: {e}")
+            failed_downloads.append({'file': file})
+            res = web.Response(status=410, reason='empty_file')
+            return res
+        else:
+            print(f"Error during hash check or file move: {e}")
+            if temp_file is not None and os.path.exists(temp_file.name):
+                os.remove(temp_file.name)
+            failed_downloads.append({'file': file})
+            return None
     finally:
         if sem.locked():
             sem.release()
