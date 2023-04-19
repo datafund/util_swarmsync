@@ -218,65 +218,68 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     temp_file = None
     try:
         async with sem:  # Acquire the semaphore
-            async with session.get(url + '/' + ref + '/') as res:
-                if not 200 <= res.status <= 299:
-                    failed_downloads.append({'file': file})
-                    return res
-
-                Path(file).parent.mkdir(exist_ok=True)
-
-                buffer_size = 65536  # Adjust the buffer size according to your needs
-
-                # Create a temporary file to store the downloaded content
-                temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
-                async with aiofiles.open(temp_file.name, mode='wb') as f:
-                    try:
-                        async for chunk in res.content.iter_chunked(buffer_size):
-                            if not chunk:
-                                break
-                            await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
-                    except asyncio.TimeoutError:
-                        print(f"Timeout during download of {file}")
-                        if temp_file is not None and os.path.exists(temp_file.name):
+            try:
+                async with session.get(url + '/' + ref + '/') as res:
+                    if not 200 <= res.status <= 299:
+                        failed_downloads.append({'file': file})
+                        return res
+    
+                    Path(file).parent.mkdir(exist_ok=True)
+    
+                    buffer_size = 65536  # Adjust the buffer size according to your needs
+    
+                    # Create a temporary file to store the downloaded content
+                    temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
+                    async with aiofiles.open(temp_file.name, mode='wb') as f:
+                        try:
+                            async for chunk in res.content.iter_chunked(buffer_size):
+                                if not chunk:
+                                    break
+                                await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
+                        except asyncio.TimeoutError:
+                            print(f"Timeout during download of {file}")
+                            if temp_file is not None and os.path.exists(temp_file.name):
+                                os.remove(temp_file.name)
+                            failed_downloads.append({'file': file})
+                            res = web.Response(status=408, reason='timeout')
+                            return res
+    
+                    # Calculate the SHA-256 hash of the downloaded file
+                    if sha256:
+                        file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
+                        with open(temp_file.name, 'rb') as f:
+                            while True:
+                                chunk = f.read(buffer_size)
+                                if not chunk:
+                                    break
+                                file_sha256.update(chunk)
+    
+                        # Compare the calculated hash with the provided hash
+                        if sha256 != file_sha256.hexdigest():
                             os.remove(temp_file.name)
-                        failed_downloads.append({'file': file})
-                        res = web.Response(status=408, reason='timeout')
-                        return res
+                            res.status = 409
+                            res.reason = 'sha256'
+                            failed_downloads.append({'file': file})
+                            return res
+    
+                    # Move the temporary file to the final destination
+                    shutil.move(temp_file.name, file)
 
-                # Calculate the SHA-256 hash of the downloaded file
-                if sha256:
-                    file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
-                    with open(temp_file.name, 'rb') as f:
-                        while True:
-                            chunk = f.read(buffer_size)
-                            if not chunk:
-                                break
-                            file_sha256.update(chunk)
-
-                    # Compare the calculated hash with the provided hash
-                    if sha256 != file_sha256.hexdigest():
-                        os.remove(temp_file.name)
-                        res.status = 409
-                        res.reason = 'sha256'
-                        failed_downloads.append({'file': file})
-                        return res
-
-                # Move the temporary file to the final destination
-                shutil.move(temp_file.name, file)
-
+            except Exception as e:
+                if str(e) == "Response payload is not completed":
+                    print(f"Empty file error: {e}")
+                    failed_downloads.append({'file': file})
+                    res = web.Response(status=410, reason='empty_file')
+                    return res
+                else:
+                    raise e
         return res
     except Exception as e:
-        if str(e) == "Response payload is not completed":
-            print(f"Empty file error: {e}")
-            failed_downloads.append({'file': file})
-            res = web.Response(status=410, reason='empty_file')
-            return res
-        else:
-            print(f"Error during hash check or file move: {e}")
-            if temp_file is not None and os.path.exists(temp_file.name):
-                os.remove(temp_file.name)
-            failed_downloads.append({'file': file})
-            return None
+        print(f"Error during hash check or file move: {e}")
+        if temp_file is not None and os.path.exists(temp_file.name):
+            os.remove(temp_file.name)
+        failed_downloads.append({'file': file})
+        return None
     finally:
         if sem.locked():
             sem.release()
