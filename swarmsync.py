@@ -235,10 +235,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                             if not chunk:
                                 break
                             await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
-
-                        # Ensure the file is fully downloaded
-                        if not res.content.at_eof():
-                            raise aiohttp.ClientPayloadError("Response payload is not completed")
                     except asyncio.TimeoutError:
                         print(f"Timeout during download of {file}")
                         if temp_file is not None and os.path.exists(temp_file.name):
@@ -247,6 +243,9 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                         res = web.Response(status=408, reason='timeout')
                         return res
 
+                    # Ensure the file is fully downloaded
+                    await res.content.read()
+                    
                 # Calculate the SHA-256 hash of the downloaded file
                 if sha256:
                     file_sha256 = hashlib.sha256()  # Create a new sha256 hash object
