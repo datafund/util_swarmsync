@@ -213,7 +213,8 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         display.update()
         sem.release()
 
-async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, file_download_timeout=1800):
+
+async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, chunk_timeout=300):
     global display
     temp_file = None
     try:
@@ -230,18 +231,19 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 # Create a temporary file to store the downloaded content
                 temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
                 async with aiofiles.open(temp_file.name, mode='wb') as f:
-                    try:
-                        async for chunk in res.content.iter_chunked(buffer_size):
+                    while True:
+                        try:
+                            chunk = await asyncio.wait_for(res.content.read(buffer_size), timeout=chunk_timeout)
                             if not chunk:
                                 break
-                            await asyncio.wait_for(f.write(chunk), timeout=file_download_timeout)
-                    except asyncio.TimeoutError:
-                        print(f"Timeout during download of {file}")
-                        if temp_file is not None and os.path.exists(temp_file.name):
-                            os.remove(temp_file.name)
-                        failed_downloads.append({'file': file})
-                        res = web.Response(status=408, reason='timeout')
-                        return res
+                            await f.write(chunk)
+                        except asyncio.TimeoutError:
+                            #print(f"Timeout during download of {file}")
+                            if temp_file is not None and os.path.exists(temp_file.name):
+                                os.remove(temp_file.name)
+                            failed_downloads.append({'file': file})
+                            res = web.Response(status=408, reason='timeout')
+                            return res
 
                 # Calculate the SHA-256 hash of the downloaded file
                 if sha256:
@@ -282,6 +284,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             sem.release()
         display.update()
         write_list(FAILED_DL, failed_downloads)
+
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
