@@ -214,9 +214,10 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
         sem.release()
 
 
-async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, chunk_timeout=300):
+async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, sem, sha256, chunk_timeout=300, max_retries=32, retry_delay=1):
     global display
     temp_file = None
+
     try:
         async with sem:  # Acquire the semaphore
             async with session.get(url + '/' + ref + '/') as res:
@@ -232,18 +233,24 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 temp_file = tempfile.NamedTemporaryFile(mode='wb', delete=False)
                 async with aiofiles.open(temp_file.name, mode='wb') as f:
                     while True:
-                        try:
-                            chunk = await asyncio.wait_for(res.content.read(buffer_size), timeout=chunk_timeout)
-                            if not chunk:
-                                break
-                            await f.write(chunk)
-                        except asyncio.TimeoutError:
-                            #print(f"Timeout during download of {file}")
-                            if temp_file is not None and os.path.exists(temp_file.name):
-                                os.remove(temp_file.name)
-                            failed_downloads.append({'file': file})
-                            res = web.Response(status=408, reason='timeout')
-                            return res
+                        for retry_attempt in range(max_retries):
+                            try:
+                                chunk = await asyncio.wait_for(res.content.read(buffer_size), timeout=chunk_timeout)
+                                if not chunk:
+                                    break
+                                await f.write(chunk)
+                                break  # Successfully downloaded chunk, exit retry loop
+                            except asyncio.TimeoutError:
+                                if retry_attempt < max_retries - 1:
+                                    await asyncio.sleep(retry_delay)
+                                else:
+                                    if temp_file is not None and os.path.exists(temp_file.name):
+                                        os.remove(temp_file.name)
+                                    failed_downloads.append({'file': file})
+                                    res = web.Response(status=408, reason='timeout')
+                                    return res
+                        if not chunk:
+                            break
 
                 # Calculate the SHA-256 hash of the downloaded file
                 if sha256:
@@ -269,11 +276,10 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         return res
     except Exception as e:
         if "Response payload is not completed" in str(e):
-            #print(f"Empty file error: {e}")
-            failed_downloads.append({'file': file})
-            res = web.Response(status=410, reason='empty_file')
             if temp_file is not None and os.path.exists(temp_file.name):
                 os.remove(temp_file.name)
+            failed_downloads.append({'file': file})
+            res = web.Response(status=410, reason='empty_file')
             return res
         else:
             print(f"Error during hash check or file move: {e}")
