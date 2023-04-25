@@ -272,6 +272,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             #print(f"Empty file error: {e}")
             failed_downloads.append({'file': file})
             res = web.Response(status=410, reason='empty_file')
+            if temp_file is not None and os.path.exists(temp_file.name):
+                os.remove(temp_file.name)
             return res
         else:
             print(f"Error during hash check or file move: {e}")
