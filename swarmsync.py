@@ -536,10 +536,11 @@ async def create_mantaray_index(json_file_path: str, index_file_path: str) -> bo
         for entry_data in json_data:
             file = entry_data.get('file')
             reference = entry_data.get('reference')
+            decrypt = entry_data.get('decrypt')
             size = entry_data.get('size')
             sha256 = entry_data.get('sha256')
             content_type = entry_data.get('contentType', 'application/octet-stream')
-            entry = Entry(file, reference, size, sha256, content_type)
+            entry = Entry(file, reference, decrypt, size, sha256, content_type)
             index.add_entry(entry.to_dict())
     else:
         # Open the existing index file
@@ -550,7 +551,7 @@ async def create_mantaray_index(json_file_path: str, index_file_path: str) -> bo
         for entry_data in json_data:
             if entry_data['reference'] not in existing_references:
                 content_type = entry_data.get('content_type', 'application/octet-stream')
-                entry = Entry(entry_data['file'], entry_data['reference'], entry_data['size'], entry_data['sha256'], content_type)
+                entry = Entry(entry_data['file'], entry_data['reference'], entry_data.get('decrypt'), entry_data['size'], entry_data['sha256'], content_type)
                 index.add_entry(entry.to_dict())
 
     # Save the index to disk

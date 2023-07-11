@@ -7,9 +7,10 @@ import os
 from typing import List, Dict, Tuple, Set
 
 class Entry:
-    def __init__(self, file, reference, size, sha256, content_type):
+    def __init__(self, file, reference, decrypt, size, sha256, content_type):
         self.file = file
         self.reference = reference
+        self.decrypt = decrypt
         self.size = size
         self.sha256 = sha256
         self.content_type = content_type
@@ -18,6 +19,7 @@ class Entry:
         return {
             "file": self.file,
             "reference": self.reference,
+            "decrypt": self.decrypt,
             "size": self.size,
             "sha256": self.sha256,
             "content-type": self.content_type
@@ -54,7 +56,7 @@ class MantarayIndex:
     def get_entries(self):
         entries = []
         for entry in self.index.values():
-            entries.append(Entry(entry['file'], entry['reference'], entry['size'], entry['sha256'], entry['content-type']))
+            entries.append(Entry(entry['file'], entry['reference'], entry['decrypt'], entry['size'], entry['sha256'], entry['content-type']))
         return entries
 
     def delete_entry(self, entry_hash: str):
@@ -200,8 +202,8 @@ class MantarayIndexHTMLGenerator:
                 size = entry['size']
                 reference = entry['reference']
                 sha256 = entry['sha256']
-                if 'decrypt' in entry:
-                    decrypt_key = entry['decrypt']
+                decrypt_key = entry['decrypt']
+                if decrypt_key is not None:
                     reference = reference + decrypt_key
                 f.write(f'<li><a href="#" onclick="loadFileByReference(\'{reference}\')">{uri}</a> ({size} bytes, sha256={sha256})</li>\n')
             f.write('</ul>\n')
@@ -212,7 +214,12 @@ class MantarayIndexHTMLGenerator:
             f.write('function getUriToReference(data) {\n')
             f.write('  const uriToReference = {};\n')
             f.write('  for (const entry of Object.values(data)) {\n')
-            f.write('    uriToReference[entry.file] = entry.reference;\n')
+            f.write('    let reference = entry.reference;\n')
+            f.write('    if (entry.decrypt) {\n')
+            f.write('      const decryptKey = entry.decrypt;\n')
+            f.write('      reference = `${reference}${decryptKey}`;\n')
+            f.write('    }\n')
+            f.write('    uriToReference[entry.file] = reference;\n')
             f.write('  }\n')
             f.write('  return uriToReference;\n')
             f.write('}\n')
@@ -222,6 +229,7 @@ class MantarayIndexHTMLGenerator:
             f.write('function loadFileByReference(reference, uri) {\n')
             f.write('  var xhr = new XMLHttpRequest();\n')
             f.write('  xhr.open("GET", window.location.origin + "/bzz/" + reference + "/", true);\n')
+
             f.write('  xhr.responseType = "blob";\n')
             f.write('  const spinner = document.getElementById("spinner");\n')
             f.write('  spinner.style.display = "block";\n')
