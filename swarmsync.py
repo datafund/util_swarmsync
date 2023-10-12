@@ -107,6 +107,8 @@ def signal_handler(sig, frame):
     print("Ctrl+C pressed. Cleaning up or running specific code...")
     REQUEST_TIME.clear()
     REQUEST_SIZE.clear()
+    SWARMSYNC_TIME_HISTOGRAM.clear()
+    SWARMSYNC_SIZE_HISTOGRAM.clear()
     push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
     sys.exit(0)  # Exit the script gracefully
 
@@ -681,6 +683,8 @@ def main_common():
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
     REQUEST_TIME.clear()
     REQUEST_SIZE.clear()
+    SWARMSYNC_TIME_HISTOGRAM.clear()
+    SWARMSYNC_SIZE_HISTOGRAM.clear()
     push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
 
 def main():
