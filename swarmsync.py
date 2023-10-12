@@ -935,7 +935,7 @@ parser_upload.add_argument("-p", "--path", type=str, help="enter path to folder 
 parser_upload.add_argument("-s", "--search", type=str, help="search param(* or *.jpg or somename.txt", default="*.*")
 parser_upload.add_argument("-P", "--pin", action=argparse.BooleanOptionalAction, help="should files be pinned", required=False, default=False)
 parser_upload.add_argument("-t", "--tag", help="enter a uid tag for upload. if empty a new tag will be created. use --no-tag if you dont want any tag.")
-parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging")
+parser_upload.add_argument("--no-tag", action='store_true', help="Disable tagging", default=True)
 parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth address or hex of lenght 64",
                            default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
