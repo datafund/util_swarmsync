@@ -2,7 +2,7 @@
 # encoding: utf-8
 from tqdm import tqdm
 import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
-import re,hashlib,tempfile,shutil,random
+import re,hashlib,tempfile,shutil,signal,random
 from prometheus_client import push_to_gateway, Summary, Counter, Gauge, Histogram, CollectorRegistry
 from itertools import cycle, islice
 from pathlib import Path
@@ -101,6 +101,14 @@ SWARMSYNC_SIZE_HISTOGRAM = Histogram(
     registry=registry,
 )
 
+
+def signal_handler(sig, frame):
+    # This function will be called when Ctrl+C is pressed
+    print("Ctrl+C pressed. Cleaning up or running specific code...")
+    REQUEST_TIME.clear()
+    REQUEST_SIZE.clear()
+    push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+    sys.exit(0)  # Exit the script gracefully
 
 def append_list(file, a_list):
     with open(file, "a") as fp:
@@ -936,6 +944,9 @@ parser_upload.set_defaults(func=lambda parsed_args: upload(), command=upload)
 parser_mantaray = subparsers.add_parser('mantaray', help='manage mantaray index')
 add_common_arguments(parser_mantaray)
 parser_mantaray.set_defaults(func=lambda parsed_args: mantaray(parsed_args), command=mantaray)
+
+# Set up the signal handler
+signal.signal(signal.SIGINT, signal_handler)
 
 # Print help message and exit if no arguments are provided
 if len(sys.argv) == 1:
