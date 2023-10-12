@@ -2,7 +2,8 @@
 # encoding: utf-8
 from tqdm import tqdm
 import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
-import re,hashlib,tempfile,shutil
+import re,hashlib,tempfile,shutil,random
+from prometheus_client import push_to_gateway, Summary, Counter, Gauge, Histogram, CollectorRegistry
 from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
@@ -23,6 +24,83 @@ urll=[]
 all_errors=[]
 failed_downloads = []
 all_ok=""
+
+##prometheus
+# Create a metric to track time spent and requests made.
+registry = CollectorRegistry()
+REQUEST_TIME = Gauge('swarmsync_upload_time',
+                       'Time spent processing request',
+                       labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+                       registry=registry)
+REQUEST_SIZE = Gauge('swarmsync_upload_size',
+                       'Uploaded file sizes',
+                       labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+                       registry=registry)
+HTTP_STATUS_COUNTER = Counter('swarmsync_status_count',
+                              'Total HTTP Requests',
+                              labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+                              registry=registry)
+# Define a Histogram to track the time consumed per file upload
+SWARMSYNC_TIME_HISTOGRAM = Histogram(
+    'swarmsync_upload_time_histogram',
+    'Time consumed per file uploaded',
+    labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+    buckets=(
+        1,    #   1KB
+        10,    #   10KB
+        30,   #   100KB
+        60,   #   500KB
+        90,  #   1MB
+        120,  #   1.5MB
+        180,  #   2MB
+        300,  #   2.5MB
+        600,  #   3MB
+        1800,  #   3.5MB
+        3600,  #   4MB
+        7200,  #   4.5MB
+    ),
+    registry=registry,
+)
+
+SWARMSYNC_SIZE_HISTOGRAM = Histogram(
+    'swarmsync_upload_size_histogram',
+    'file size uploaded',
+    labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+    buckets=(
+        1000,    #   1KB
+        10000,    #   10KB
+        100000,   #   100KB
+        500000,   #   500KB
+        1000000,  #   1MB
+        1500000,  #   1.5MB
+        2000000,  #   2MB
+        2500000,  #   2.5MB
+        3000000,  #   3MB
+        3500000,  #   3.5MB
+        4000000,  #   4MB
+        4500000,  #   4.5MB
+        5000000,  #   5MB
+        10000000,  #   10MB
+        15000000,  #   15MB
+        20000000,  #   20MB
+        25000000,  #   25MB
+        30000000,  #   30MB
+        35000000,  #   35MB
+        40000000,  #   40MB
+        45000000,  #   45MB
+        50000000,  #   50MB
+        100000000,  # 100MB
+        150000000,  # 100MB
+        200000000,  # 100MB
+        300000000,  # 100MB
+        500000000,  # 100MB
+        1000000000,  # 1GB
+        2000000000,  # 2GB
+        5000000000,  # 2GB
+    ),
+    registry=registry,
+)
+
 
 def append_list(file, a_list):
     with open(file, "a") as fp:
@@ -293,7 +371,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         display.update()
         write_list(FAILED_DL, failed_downloads)
 
-
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
     await sem.acquire()
@@ -302,7 +379,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     if MIME is None:
         MIME = "application/octet-stream"
 
-    headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
+    headers={"Content-Type": MIME, "swarm-deferred-upload": str(args.deferred),
              "swarm-postage-batch-id": stamp }
     if tag is not None:
         if bool(tag) != False:
@@ -314,13 +391,14 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     if args.xbee_header:
         headers.update({ "x-bee-node": args.xbee_header })
     n_file=re.sub('[^A-Za-z0-9-._]+', '_', os.path.basename(file.name))
+    start_time = time.time()  # Record the start time
     try:
         async with session.post(url + '?name=' + n_file,
                                 headers=headers, data=file.file_reader()) as res:
             scheduled.remove(file.name)
             if 200 <= res.status <= 300:
                 response = await res.json()
-                ref = response['reference']
+                ref = response.get('reference', 'null')
                 if len(ref) == 64 and not args.reupload:
                     # if we have a reference we can asume upload was sucess
                     # so remove from todo list
@@ -341,7 +419,9 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             else:
                 print('\n\n An error occured: ', res.status)
                 # better quit on error
+                ref='null'
                 cleanup(RESPONSES)
+
             #everything passed, write response
             response_dict(RESPONSES, resp_dict)
             return res
@@ -349,6 +429,15 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         # handle error(s) according to your needs
         print(e)
     finally:
+        # Record the timing information with labels
+        end_time = time.time()  # Record the end time
+        duration = end_time - start_time
+        REQUEST_TIME.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).set(duration)
+        REQUEST_SIZE.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).set(file.size)
+        SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).observe(duration)
+        SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).observe(file.size)
+        HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=args.count, reference=ref).inc()
+        push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
         sem.release()
 
 async def directupload(file: FileManager, url: str, session: aiohttp.ClientSession):
@@ -356,7 +445,7 @@ async def directupload(file: FileManager, url: str, session: aiohttp.ClientSessi
     res=None
     MIME = "text/html"
 
-    headers={"Content-Type": MIME, "swarm-deferred-upload": "false",
+    headers={"Content-Type": MIME, "swarm-deferred-upload": str(args.deferred),
              "swarm-postage-batch-id": args.stamp }
     if tag is not None:
         if bool(tag) != False:
@@ -582,6 +671,9 @@ def main_common():
     cleanup(RESPONSES)
     get_size()
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
+    REQUEST_TIME.clear()
+    REQUEST_SIZE.clear()
+    push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
 
 def main():
     main_common()
@@ -836,6 +928,7 @@ parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth addres
                            default="")
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
+parser_upload.add_argument("-d", "--deferred", action='store_false', help="sets swarm deferred upload header to False (default is True)")
 add_common_arguments(parser_upload)
 parser_upload.set_defaults(func=lambda parsed_args: upload(), command=upload)
 
