@@ -28,36 +28,50 @@ all_ok=""
 ##prometheus
 # Create a metric to track time spent and requests made.
 registry = CollectorRegistry()
-REQUEST_TIME = Gauge('swarmsync_upload_time',
+REQUEST_TIME = Summary('swarmsync_upload_time',
                        'Time spent processing request',
-                       labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+                       labelnames=['status', 'encryption', 'deferred', 'concurrency'],
                        registry=registry)
-REQUEST_SIZE = Gauge('swarmsync_upload_size',
+REQUEST_SIZE = Summary('swarmsync_upload_size',
                        'Uploaded file sizes',
-                       labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+                       labelnames=['status', 'encryption', 'deferred', 'concurrency'],
                        registry=registry)
+DOWNLOAD_TIME = Summary('swarmsync_download_time',
+                       'Time spent downloading request',
+                       labelnames=['status', 'concurrency'],
+                       registry=registry)
+DOWNLOAD_SIZE = Summary('swarmsync_download_size',
+                       'Downloaded file sizes',
+                       labelnames=['status', 'concurrency'],
+                       registry=registry)
+
 HTTP_STATUS_COUNTER = Counter('swarmsync_status_count',
                               'Total HTTP Requests',
-                              labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+                              labelnames=['status', 'encryption', 'deferred', 'concurrency'],
                               registry=registry)
-# Define a Histogram to track the time consumed per file upload
+
+HTTP_STATUS_DL_COUNTER = Counter('swarmsync_dl_status_count',
+                              'Total HTTP Requests',
+                              labelnames=['status', 'concurrency'],
+                              registry=registry)
+
 SWARMSYNC_TIME_HISTOGRAM = Histogram(
     'swarmsync_upload_time_histogram',
     'Time consumed per file uploaded',
-    labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+    labelnames=['status', 'encryption', 'deferred', 'concurrency'],
     buckets=(
-        1,    #   1KB
-        10,    #   10KB
-        30,   #   100KB
-        60,   #   500KB
-        90,  #   1MB
-        120,  #   1.5MB
-        180,  #   2MB
-        300,  #   2.5MB
-        600,  #   3MB
-        1800,  #   3.5MB
-        3600,  #   4MB
-        7200,  #   4.5MB
+        1,
+        10,
+        30,
+        60,
+        90,
+        120,
+        180,
+        300,
+        600,
+        1800,
+        3600,
+        7200,
     ),
     registry=registry,
 )
@@ -65,50 +79,80 @@ SWARMSYNC_TIME_HISTOGRAM = Histogram(
 SWARMSYNC_SIZE_HISTOGRAM = Histogram(
     'swarmsync_upload_size_histogram',
     'file size uploaded',
-    labelnames=['status', 'encryption', 'deferred', 'concurrency', 'reference'],
+    labelnames=['status', 'encryption', 'deferred', 'concurrency'],
     buckets=(
         1000,    #   1KB
         10000,    #   10KB
         100000,   #   100KB
-        500000,   #   500KB
         1000000,  #   1MB
-        1500000,  #   1.5MB
-        2000000,  #   2MB
-        2500000,  #   2.5MB
-        3000000,  #   3MB
-        3500000,  #   3.5MB
-        4000000,  #   4MB
-        4500000,  #   4.5MB
         5000000,  #   5MB
         10000000,  #   10MB
-        15000000,  #   15MB
         20000000,  #   20MB
-        25000000,  #   25MB
         30000000,  #   30MB
-        35000000,  #   35MB
         40000000,  #   40MB
-        45000000,  #   45MB
         50000000,  #   50MB
         100000000,  # 100MB
-        150000000,  # 100MB
-        200000000,  # 100MB
-        300000000,  # 100MB
-        500000000,  # 100MB
+        200000000,
+        300000000,
+        500000000,
         1000000000,  # 1GB
         2000000000,  # 2GB
-        5000000000,  # 2GB
+        5000000000,  # 5GB
     ),
     registry=registry,
 )
 
+SWARMSYNC_DL_TIME_HISTOGRAM = Histogram(
+    'swarmsync_download_time_histogram',
+    'Time consumed per file downloaded',
+    labelnames=['status', 'concurrency'],
+    buckets=(
+        1,
+        10,
+        30,
+        60,
+        90,
+        120,
+        180,
+        300,
+        600,
+        1800,
+        3600,
+        7200,
+    ),
+    registry=registry,
+)
+
+SWARMSYNC_DL_SIZE_HISTOGRAM = Histogram(
+    'swarmsync_download_size_histogram',
+    'file size download histogram',
+    labelnames=['status', 'concurrency'],
+    buckets=(
+        1000,    #   1KB
+        10000,    #   10KB
+        100000,   #   100KB
+        1000000,  #   1MB
+        5000000,  #   5MB
+        10000000,  #   10MB
+        20000000,  #   20MB
+        30000000,  #   30MB
+        40000000,  #   40MB
+        50000000,  #   50MB
+        100000000,  # 100MB
+        200000000,
+        300000000,
+        500000000,
+        1000000000,  # 1GB
+        2000000000,  # 2GB
+        5000000000,  # 5GB
+    ),
+    registry=registry,
+)
 
 def signal_handler(sig, frame):
     # This function will be called when Ctrl+C is pressed
     print("Ctrl+C pressed. Cleaning up or running specific code...")
-    REQUEST_TIME.clear()
-    REQUEST_SIZE.clear()
-    SWARMSYNC_TIME_HISTOGRAM.clear()
-    SWARMSYNC_SIZE_HISTOGRAM.clear()
+    cleanup_prometheus()
     push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
     sys.exit(0)  # Exit the script gracefully
 
@@ -309,9 +353,13 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     try:
         async with sem:  # Acquire the semaphore
             async with session.get(url + '/' + ref + '/') as res:
+                start_time = time.time()  # Record the start time
                 if not 200 <= res.status <= 299:
                     failed_downloads.append({'file': file})
                     return res
+
+                # Get the file size from the Content-Length header
+                file_size = int(res.headers.get('Content-Length', 0))
 
                 Path(file).parent.mkdir(exist_ok=True)
 
@@ -361,6 +409,16 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 # Move the temporary file to the final destination
                 shutil.move(temp_file.name, file)
 
+                # Record the timing information with labels
+                end_time = time.time()  # Record the end time
+                duration = end_time - start_time
+                DOWNLOAD_TIME.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
+                DOWNLOAD_SIZE.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
+                SWARMSYNC_DL_TIME_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
+                SWARMSYNC_DL_SIZE_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
+                HTTP_STATUS_DL_COUNTER.labels(status=res.status, concurrency=int(args.count) -1).inc()
+                push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+
         return res
     except Exception as e:
         if "Response payload is not completed" in str(e):
@@ -380,6 +438,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
             sem.release()
         display.update()
         write_list(FAILED_DL, failed_downloads)
+
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
@@ -442,11 +501,11 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         # Record the timing information with labels
         end_time = time.time()  # Record the end time
         duration = end_time - start_time
-        REQUEST_TIME.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).set(duration)
-        REQUEST_SIZE.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).set(file.size)
-        SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).observe(duration)
-        SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1, reference=ref).observe(file.size)
-        HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=args.count, reference=ref).inc()
+        REQUEST_TIME.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
+        REQUEST_SIZE.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
+        SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
+        SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
+        HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).inc()
         push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
         sem.release()
 
@@ -661,6 +720,17 @@ async def create_mantaray_index(json_file_path: str, index_file_path: str) -> bo
 
     return True
 
+def cleanup_prometheus():
+    REQUEST_TIME.clear()
+    REQUEST_SIZE.clear()
+    DOWNLOAD_TIME.clear()
+    DOWNLOAD_SIZE.clear()
+    SWARMSYNC_TIME_HISTOGRAM.clear()
+    SWARMSYNC_SIZE_HISTOGRAM.clear()
+    SWARMSYNC_DL_TIME_HISTOGRAM.clear()
+    SWARMSYNC_DL_SIZE_HISTOGRAM.clear()
+    push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+
 def main_common():
     global scheduled, todo, urll
     cleanup(RESPONSES)
@@ -681,11 +751,7 @@ def main_common():
     cleanup(RESPONSES)
     get_size()
     print('Time spent uploding:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
-    REQUEST_TIME.clear()
-    REQUEST_SIZE.clear()
-    SWARMSYNC_TIME_HISTOGRAM.clear()
-    SWARMSYNC_SIZE_HISTOGRAM.clear()
-    push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+    cleanup_prometheus()
 
 def main():
     main_common()
@@ -849,6 +915,7 @@ def download(args):
     loop.run_until_complete(asyncio.sleep(0.250))
     loop.close()
     print('Time spent downloading:', time.strftime("%H:%M:%S", time.gmtime(end-start)))
+    cleanup_prometheus()
 
 def mantaray(args):
     global display
