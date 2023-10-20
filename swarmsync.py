@@ -4,6 +4,7 @@ from tqdm import tqdm
 import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
 import re,hashlib,tempfile,shutil,signal,random
 from prometheus_client import push_to_gateway, Summary, Counter, Gauge, Histogram, CollectorRegistry
+from prometheus_client.exposition import basic_auth_handler
 from itertools import cycle, islice
 from pathlib import Path
 from secrets import token_hex
@@ -27,6 +28,11 @@ all_ok=""
 
 ##prometheus
 # Create a metric to track time spent and requests made.
+def pgw_auth_handler(url, method, timeout, headers, data):
+    username = 'datafund'
+    password = os.getenv('PGW_PW')
+    return basic_auth_handler(url, method, timeout, headers, data, username, password)
+
 registry = CollectorRegistry()
 REQUEST_TIME = Summary('swarmsync_upload_time',
                        'Time spent processing request',
@@ -153,7 +159,8 @@ def signal_handler(sig, frame):
     # This function will be called when Ctrl+C is pressed
     print("Ctrl+C pressed. Cleaning up or running specific code...")
     cleanup_prometheus()
-    push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+    if args.stats:
+        push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
     sys.exit(0)  # Exit the script gracefully
 
 def append_list(file, a_list):
@@ -417,7 +424,8 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 SWARMSYNC_DL_TIME_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
                 SWARMSYNC_DL_SIZE_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
                 HTTP_STATUS_DL_COUNTER.labels(status=res.status, concurrency=int(args.count) -1).inc()
-                push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+                if args.stats:
+                    push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
 
         return res
     except Exception as e:
@@ -506,7 +514,8 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
         SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
         HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).inc()
-        push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+        if args.stats:
+            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
         sem.release()
 
 async def directupload(file: FileManager, url: str, session: aiohttp.ClientSession):
@@ -729,7 +738,8 @@ def cleanup_prometheus():
     SWARMSYNC_SIZE_HISTOGRAM.clear()
     SWARMSYNC_DL_TIME_HISTOGRAM.clear()
     SWARMSYNC_DL_SIZE_HISTOGRAM.clear()
-    push_to_gateway('142.132.142.223:9091', job='swarmsync', registry=registry)
+    if args.stats:
+        push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
 
 def main_common():
     global scheduled, todo, urll
@@ -954,13 +964,6 @@ def mantaray(args):
 parser = argparse.ArgumentParser()
 subparsers = parser.add_subparsers()
 
-# Add common arguments for all subparsers
-common_arguments = [
-    ('--no-local', {'action': 'store_true', 'help': 'save swarmsync files in home folder'}),
-    ('-u', '--beeurl', {'type': str, 'help': 'enter http address of bee. i.e. http://0:1633', 'default':'http://localhost:1633'}),
-    ('-c', '--count', {'type': int, 'help': 'number of concurrent tasks', 'default': 10}),
-]
-
 # Utility function to add common arguments to subparsers
 def add_common_arguments(subparser):
     subparser.add_argument('--no-local', action='store_true', help='save swarmsync files in home folder', default=False)
@@ -968,6 +971,7 @@ def add_common_arguments(subparser):
     subparser.add_argument('-c', '--count', type=int, help='number of concurrent tasks', default=10)
     subparser.add_argument("-S", "--stamp", type=str, help="enter bee stamp id", default="0000000000000000000000000000000000000000000000000000000000000000")
     subparser.add_argument('--xbee-header', action='store_true', help='add xbee header to the file')
+    subparser.add_argument('--stats', type=str, help='send prometheus statistics to url', default='')
 
 
 
