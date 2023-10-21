@@ -1017,7 +1017,7 @@ parser_upload.set_defaults(func=lambda parsed_args: upload(), command=upload)
 
 # Mantaray subparser
 parser_mantaray = subparsers.add_parser('mantaray', help='manage mantaray index')
-parser_upload.add_argument("-d", "--deferred", action='store_false', help="sets swarm deferred upload header to False (default is True)")
+parser_mantaray.add_argument("-d", "--deferred", action='store_false', help="sets swarm deferred upload header to False (default is True)")
 add_common_arguments(parser_mantaray)
 parser_mantaray.set_defaults(func=lambda parsed_args: mantaray(parsed_args), command=mantaray)
 

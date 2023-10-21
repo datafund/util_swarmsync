@@ -16,7 +16,6 @@ Swarmsync is a Python script that provides a set of tools for managing files on 
 ### Prerequisites
 
 - Python 3.8 or higher
-- [Ethereum Swarm](https://swarm.ethereum.org/) node running
 - [Bee client](https://docs.ethswarm.org/docs/installation/bee/getting-started/installation/)
 
 ### Installation
