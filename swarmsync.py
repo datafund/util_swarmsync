@@ -342,6 +342,7 @@ async def aioget(ref, url: str, session: aiohttp.ClientSession, sem):
                     all_errors.append({ "reference": ref, "isRetrievable": quoted_result, })
             else:
                 print('Error occured :', res.status)
+                display.clear(nolock=False)
                 quit()
             await asyncio.sleep(2)
             return res
@@ -358,9 +359,10 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     temp_file = None
 
     try:
+        start_time = time.time()  # Record the start time
+        file_size = 0
         async with sem:  # Acquire the semaphore
             async with session.get(url + '/' + ref + '/') as res:
-                start_time = time.time()  # Record the start time
                 if not 200 <= res.status <= 299:
                     failed_downloads.append({'file': file})
                     return res
@@ -416,17 +418,6 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
                 # Move the temporary file to the final destination
                 shutil.move(temp_file.name, file)
 
-                # Record the timing information with labels
-                end_time = time.time()  # Record the end time
-                duration = end_time - start_time
-                DOWNLOAD_TIME.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
-                DOWNLOAD_SIZE.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
-                SWARMSYNC_DL_TIME_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
-                SWARMSYNC_DL_SIZE_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
-                HTTP_STATUS_DL_COUNTER.labels(status=res.status, concurrency=int(args.count) -1).inc()
-                if args.stats:
-                    push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
-
         return res
     except Exception as e:
         if "Response payload is not completed" in str(e):
@@ -445,6 +436,16 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         if sem.locked():
             sem.release()
         display.update()
+        # Record the timing information with labels
+        end_time = time.time()  # Record the end time
+        duration = end_time - start_time
+        DOWNLOAD_TIME.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
+        DOWNLOAD_SIZE.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
+        SWARMSYNC_DL_TIME_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(duration)
+        SWARMSYNC_DL_SIZE_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
+        HTTP_STATUS_DL_COUNTER.labels(status=res.status, concurrency=int(args.count) -1).inc()
+        if args.stats:
+            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
         write_list(FAILED_DL, failed_downloads)
 
 
