@@ -358,11 +358,18 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     global display
     temp_file = None
 
+    headers = {
+    "swarm-cache": str(args.cache).lower(),
+    "swarm-redundancy-strategy": str(args.redundancy_strategy),
+    "swarm-redundancy-fallback-mode": str(args.redundancy_fallback).lower(),
+    "swarm-chunk-retrieval-timeout": args.chunk_timeout
+    }
+
     try:
         start_time = time.time()  # Record the start time
         file_size = 0
         async with sem:  # Acquire the semaphore
-            async with session.get(url + '/' + ref + '/') as res:
+            async with session.get(url + '/' + ref + '/', headers=headers) as res:
                 if not 200 <= res.status <= 299:
                     failed_downloads.append({'file': file})
                     return res
@@ -993,6 +1000,8 @@ parser_show.set_defaults(func=lambda parsed_args: show(parsed_args), command=sho
 
 # Download subparser
 parser_download = subparsers.add_parser('download', help='download everything from responses list')
+parser_download.add_argument("-RS", "--redundancy-strategy", type=int, help="Redundancy strategy for data retrieval", choices=[0, 1, 2, 3], default=0)
+parser_download.add_argument("--redundancy-fallback", action=argparse.BooleanOptionalAction, help="Use redundancy strategies in a fallback cascade", required=False, default=True)
 add_common_arguments(parser_download)
 parser_download.set_defaults(func=lambda parsed_args: download(parsed_args), command=download)
 
