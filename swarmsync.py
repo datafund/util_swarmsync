@@ -458,7 +458,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         MIME = "application/octet-stream"
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": str(args.deferred),
-             "swarm-postage-batch-id": stamp }
+             "swarm-postage-batch-id": stamp, "swarm-redundancy-level": str(args.redundancy) }
     if tag is not None:
         if bool(tag) != False:
             headers.update({ "swarm-tag": tag.__str__() })
@@ -1014,6 +1014,7 @@ parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth addres
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
 parser_upload.add_argument("-d", "--deferred", action='store_false', help="sets swarm deferred upload header to False (default is True)")
+parser_upload.add_argument("-R", "--redundancy", type=int, help="Redundancy level for uploaded data", default=0)
 add_common_arguments(parser_upload)
 parser_upload.set_defaults(func=lambda parsed_args: upload(), command=upload)
 
