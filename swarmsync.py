@@ -516,17 +516,17 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         print(e)
     finally:
         if res and res.status is not None:  # Check if res is defined and has a status attribute
-        # Record the timing information with labels
-        end_time = time.time()  # Record the end time
-        duration = end_time - start_time
-        if res.status is not None:
-            REQUEST_TIME.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
-            REQUEST_SIZE.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
-            SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
-            SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
-            HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).inc()
-        if args.stats:
-            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+            # Record the timing information with labels
+            end_time = time.time()  # Record the end time
+            duration = end_time - start_time
+            if res.status is not None:
+                REQUEST_TIME.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
+                REQUEST_SIZE.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
+                SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
+                SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
+                HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).inc()
+            if args.stats:
+                push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
         sem.release()
 
 async def directupload(file: FileManager, url: str, session: aiohttp.ClientSession):
