@@ -460,6 +460,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     global scheduled,todo,tag
     await sem.acquire()
     resp_dict = {}
+    res = None  # Initialize res to None
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     if MIME is None:
         MIME = "application/octet-stream"
@@ -514,6 +515,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         # handle error(s) according to your needs
         print(e)
     finally:
+        if res and res.status is not None:  # Check if res is defined and has a status attribute
         # Record the timing information with labels
         end_time = time.time()  # Record the end time
         duration = end_time - start_time
