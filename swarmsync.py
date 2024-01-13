@@ -1002,8 +1002,10 @@ parser_show.set_defaults(func=lambda parsed_args: show(parsed_args), command=sho
 
 # Download subparser
 parser_download = subparsers.add_parser('download', help='download everything from responses list')
+parser_download.add_argument("--cache", action=argparse.BooleanOptionalAction, help="Cache the download data on the node", required=False, default=True)
 parser_download.add_argument("-RS", "--redundancy-strategy", type=int, help="Redundancy strategy for data retrieval", choices=[0, 1, 2, 3], default=0)
 parser_download.add_argument("--redundancy-fallback", action=argparse.BooleanOptionalAction, help="Use redundancy strategies in a fallback cascade", required=False, default=True)
+parser_download.add_argument("--chunk-timeout", type=str, help="Timeout for chunk retrieval, e.g., '30s'", default="30s")
 add_common_arguments(parser_download)
 parser_download.set_defaults(func=lambda parsed_args: download(parsed_args), command=download)
 
