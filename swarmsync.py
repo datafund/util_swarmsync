@@ -451,6 +451,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
+    res=None
     await sem.acquire()
     resp_dict = {}
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
