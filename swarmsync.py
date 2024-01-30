@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 from tqdm import tqdm
-import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
+import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio, socket
 import re,hashlib,tempfile,shutil,signal,random
 from prometheus_client import push_to_gateway, Summary, Counter, Gauge, Histogram, CollectorRegistry
 from prometheus_client.exposition import basic_auth_handler
@@ -17,6 +17,7 @@ from aiohttp import web
 
 __version__ = '0.0.5.r3'
 
+HOSTNAME=socket.gethostname()
 yes = {'yes','y', 'ye', ''}
 no = {'no','n'}
 address=""
@@ -160,7 +161,7 @@ def signal_handler(sig, frame):
     print("Ctrl+C pressed. Cleaning up or running specific code...")
     cleanup_prometheus()
     if args.stats:
-        push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+        push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
     sys.exit(0)  # Exit the script gracefully
 
 def append_list(file, a_list):
@@ -445,7 +446,7 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         SWARMSYNC_DL_SIZE_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
         HTTP_STATUS_DL_COUNTER.labels(status=res.status, concurrency=int(args.count) -1).inc()
         if args.stats:
-            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+            push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
         write_list(FAILED_DL, failed_downloads)
 
 
@@ -518,7 +519,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
             HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).inc()
         if args.stats:
-            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+            push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
         sem.release()
 
 async def directupload(file: FileManager, url: str, session: aiohttp.ClientSession):
@@ -742,7 +743,7 @@ def cleanup_prometheus():
     SWARMSYNC_DL_TIME_HISTOGRAM.clear()
     SWARMSYNC_DL_SIZE_HISTOGRAM.clear()
     if args.stats:
-        push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+        push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
 
 def main_common():
     global scheduled, todo, urll
