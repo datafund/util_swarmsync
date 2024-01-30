@@ -28,7 +28,7 @@ all_ok=""
 
 ##prometheus
 # Create a metric to track time spent and requests made.
-def pgw_auth_handler(url, method, timeout, headers, data):
+def pgw_auth_handler(url, method, timeout=30, headers, data):
     username = 'datafund'
     password = os.getenv('PGW_PW')
     return basic_auth_handler(url, method, timeout, headers, data, username, password)
