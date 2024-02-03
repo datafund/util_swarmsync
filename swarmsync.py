@@ -485,13 +485,18 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
 
+                end_time = time.time()  # Record the end time
+                duration = end_time - start_time
+                speed = file.size / duration / 1048576
+                speed = round(speed, 3)
+
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
-                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME }
+                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME, "speed": speed }
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
                 if len(ref) == 64:
-                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME }
+                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME, "speed": speed }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
