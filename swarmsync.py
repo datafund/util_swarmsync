@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # encoding: utf-8
 from tqdm import tqdm
-import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio
+import time, sys, logging, os, json, mimetypes, math, argparse, aiohttp, aiofiles, asyncio, socket
 import re,hashlib,tempfile,shutil,signal,random
 from prometheus_client import push_to_gateway, Summary, Counter, Gauge, Histogram, CollectorRegistry
 from prometheus_client.exposition import basic_auth_handler
@@ -17,6 +17,7 @@ from aiohttp import web
 
 __version__ = '0.0.5.r3'
 
+HOSTNAME=socket.gethostname()
 yes = {'yes','y', 'ye', ''}
 no = {'no','n'}
 address=""
@@ -28,7 +29,7 @@ all_ok=""
 
 ##prometheus
 # Create a metric to track time spent and requests made.
-def pgw_auth_handler(url, method, timeout, headers, data):
+def pgw_auth_handler(url, method, timeout: 30, headers, data):
     username = 'datafund'
     password = os.getenv('PGW_PW')
     return basic_auth_handler(url, method, timeout, headers, data, username, password)
@@ -160,7 +161,7 @@ def signal_handler(sig, frame):
     print("Ctrl+C pressed. Cleaning up or running specific code...")
     cleanup_prometheus()
     if args.stats:
-        push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+        push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
     sys.exit(0)  # Exit the script gracefully
 
 def append_list(file, a_list):
@@ -445,12 +446,13 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
         SWARMSYNC_DL_SIZE_HISTOGRAM.labels(status=res.status, concurrency=int(args.count) -1).observe(file_size)
         HTTP_STATUS_DL_COUNTER.labels(status=res.status, concurrency=int(args.count) -1).inc()
         if args.stats:
-            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+            push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
         write_list(FAILED_DL, failed_downloads)
 
 
 async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession, sem):
     global scheduled,todo,tag
+    res=None
     await sem.acquire()
     resp_dict = {}
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
@@ -483,13 +485,18 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
 
+                end_time = time.time()  # Record the end time
+                duration = end_time - start_time
+                speed = file.size / duration / 1048576
+                speed = round(speed, 3)
+
                 if len(ref) > 64:
                     # if we have a reference and its longer than 64 then we can asume its encrypted upload
-                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME }
+                    resp_dict = { "file": file.name, "reference": ref[:64], "decrypt": ref[64:], "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME, "speed": speed }
                     todo.remove({ "file": file.name })
                     write_list(TODO, todo)
                 if len(ref) == 64:
-                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME }
+                    resp_dict = { "file": file.name, "reference": ref, "size": file.size, "sha256": calculate_sha256(file.name), "contentType": MIME, "speed": speed }
                 if len(ref) < 64:
                     #something is wrong
                     print('Lenght of response is not correct! ', res.status)
@@ -517,7 +524,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
             SWARMSYNC_SIZE_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
             HTTP_STATUS_COUNTER.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).inc()
         if args.stats:
-            push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+            push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
         sem.release()
 
 async def directupload(file: FileManager, url: str, session: aiohttp.ClientSession):
@@ -741,7 +748,7 @@ def cleanup_prometheus():
     SWARMSYNC_DL_TIME_HISTOGRAM.clear()
     SWARMSYNC_DL_SIZE_HISTOGRAM.clear()
     if args.stats:
-        push_to_gateway(args.stats, job='swarmsync', registry=registry, handler=pgw_auth_handler)
+        push_to_gateway(args.stats, job='swarmsync-' + HOSTNAME, registry=registry, handler=pgw_auth_handler)
 
 def main_common():
     global scheduled, todo, urll
