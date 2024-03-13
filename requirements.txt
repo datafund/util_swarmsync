@@ -1,5 +1,5 @@
 aiofiles==22.1.0
-aiohttp==3.8.5
+aiohttp==3.9.2
 setuptools==65.5.1
 termcolor==2.1.1
 tqdm==4.57.0
