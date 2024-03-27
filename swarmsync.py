@@ -569,7 +569,7 @@ async def directupload(file: FileManager, url: str, session: aiohttp.ClientSessi
 async def async_check(scheduled, url: str):
     global display,args
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=14400)
+    session_timeout=aiohttp.ClientTimeout(total=None)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
     display.close()
@@ -581,7 +581,7 @@ async def async_upload(scheduled, urll):
     l_url = list(islice(cycle(urll), len(scheduled)))
     scheduled = [FileManager(file) for file in scheduled]
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=14400)
+    session_timeout=aiohttp.ClientTimeout(total=None)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
     print(f'\nitems uploaded ({len(res)})')
@@ -597,7 +597,7 @@ async def async_download(references, paths, urll, sha256l):
     global display,args
     l_url = list(islice(cycle(urll), len(references)))
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=86400)
+    session_timeout=aiohttp.ClientTimeout(total=None)
     async with aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)],
             return_exceptions=True)
