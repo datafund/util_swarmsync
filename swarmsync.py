@@ -359,11 +359,18 @@ async def aiodownload(ref, file: str, url: str, session: aiohttp.ClientSession, 
     global display
     temp_file = None
 
+    headers = {
+    "swarm-cache": str(args.cache).lower(),
+    "swarm-redundancy-strategy": str(args.redundancy_strategy),
+    "swarm-redundancy-fallback-mode": str(args.redundancy_fallback).lower(),
+    "swarm-chunk-retrieval-timeout": args.chunk_timeout
+    }
+
     try:
         start_time = time.time()  # Record the start time
         file_size = 0
         async with sem:  # Acquire the semaphore
-            async with session.get(url + '/' + ref + '/') as res:
+            async with session.get(url + '/' + ref + '/', headers=headers) as res:
                 if not 200 <= res.status <= 299:
                     failed_downloads.append({'file': file})
                     return res
@@ -455,12 +462,13 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
     res=None
     await sem.acquire()
     resp_dict = {}
+    res = None  # Initialize res to None
     (MIME,_ )=mimetypes.guess_type(file.name, strict=False)
     if MIME is None:
         MIME = "application/octet-stream"
 
     headers={"Content-Type": MIME, "swarm-deferred-upload": str(args.deferred),
-             "swarm-postage-batch-id": stamp }
+             "swarm-postage-batch-id": stamp, "swarm-redundancy-level": str(args.redundancy) }
     if tag is not None:
         if bool(tag) != False:
             headers.update({ "swarm-tag": tag.__str__() })
@@ -517,7 +525,7 @@ async def aioupload(file: FileManager, url: str, session: aiohttp.ClientSession,
         # Record the timing information with labels
         end_time = time.time()  # Record the end time
         duration = end_time - start_time
-        if res.status is not None:
+        if res and res.status is not None:
             REQUEST_TIME.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
             REQUEST_SIZE.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(file.size)
             SWARMSYNC_TIME_HISTOGRAM.labels(status=res.status, encryption=args.encrypt, deferred=args.deferred, concurrency=int(args.count) -1).observe(duration)
@@ -561,7 +569,7 @@ async def directupload(file: FileManager, url: str, session: aiohttp.ClientSessi
 async def async_check(scheduled, url: str):
     global display,args
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=(3*14400))
+    session_timeout=aiohttp.ClientTimeout(total=None)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioget(ref, url, session, sem) for ref in scheduled])
     display.close()
@@ -573,7 +581,7 @@ async def async_upload(scheduled, urll):
     l_url = list(islice(cycle(urll), len(scheduled)))
     scheduled = [FileManager(file) for file in scheduled]
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=(3*14400))
+    session_timeout=aiohttp.ClientTimeout(total=None)
     async with sem, aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aioupload(file, url, session, sem) for file, url in zip(scheduled, l_url)])
     print(f'\nitems uploaded ({len(res)})')
@@ -589,7 +597,7 @@ async def async_download(references, paths, urll, sha256l):
     global display,args
     l_url = list(islice(cycle(urll), len(references)))
     sem = asyncio.Semaphore(args.count)
-    session_timeout=aiohttp.ClientTimeout(total=86400)
+    session_timeout=aiohttp.ClientTimeout(total=None)
     async with aiohttp.ClientSession(timeout=session_timeout) as session:
         res = await asyncio.gather(*[aiodownload(reference, file, url, session, sem, sha256) for reference, file, url, sha256 in zip(references, paths, l_url, sha256l)],
             return_exceptions=True)
@@ -1000,6 +1008,10 @@ parser_show.set_defaults(func=lambda parsed_args: show(parsed_args), command=sho
 
 # Download subparser
 parser_download = subparsers.add_parser('download', help='download everything from responses list')
+parser_download.add_argument("--cache", action=argparse.BooleanOptionalAction, help="Cache the download data on the node", required=False, default=True)
+parser_download.add_argument("-RS", "--redundancy-strategy", type=int, help="Redundancy strategy for data retrieval", choices=[0, 1, 2, 3], default=0)
+parser_download.add_argument("--redundancy-fallback", action=argparse.BooleanOptionalAction, help="Use redundancy strategies in a fallback cascade", required=False, default=True)
+parser_download.add_argument("--chunk-timeout", type=str, help="Timeout for chunk retrieval, e.g., '30s'", default="30s")
 add_common_arguments(parser_download)
 parser_download.set_defaults(func=lambda parsed_args: download(parsed_args), command=download)
 
@@ -1021,6 +1033,7 @@ parser_upload.add_argument("-a", "--address", type=str, help="Enter a eth addres
 parser_upload.add_argument("-E", "--encrypt", action=argparse.BooleanOptionalAction, help="Encrypt data", required=False, default=False)
 parser_upload.add_argument("-r", "--reupload", action=argparse.BooleanOptionalAction, help="reupload items that are not retrievable", required=False, default=False)
 parser_upload.add_argument("-d", "--deferred", action='store_false', help="sets swarm deferred upload header to False (default is True)")
+parser_upload.add_argument("-R", "--redundancy", type=int, help="Redundancy level for uploaded data (0 - none, 4 - paranoid)", choices=[0, 1, 2, 3, 4], default=0)
 add_common_arguments(parser_upload)
 parser_upload.set_defaults(func=lambda parsed_args: upload(), command=upload)
 
