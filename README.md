@@ -10,7 +10,7 @@ Swarmsync is a Python script that provides a set of tools for managing files on 
 - Create and manage tags for uploaded files
 - Encrypt and pin files during upload
 - Monitor and send Prometheus statistics
-- Generate html file from .json containing download references
+- Generate HTML files from JSON containing download references
 
 ## Getting Started
 
@@ -36,9 +36,19 @@ Swarmsync is a Python script that provides a set of tools for managing files on 
 
 ### Usage
 
+For interacting with Swarm network
+
 ```bash
 python3 <path-to-swarmsync.py> <command>
 ```
+
+In case you have multiple files uploaded to Swarm, and you would like to show them together. For example:
+
+- a dapp,
+- earth geospatial data,
+- royalty free videos,<br>
+
+  this is a convenient way to handle. Upload the created HTML via swarmsync.
 
 ```bash
 python3 <path-to-generate_html.py> <name-of-json-file> <name-of-footer.txt>
@@ -154,7 +164,7 @@ Swarmsync allows you to configure additional options by modifying the script. Th
 
 ## Generate HTML
 
-If you want to show your set of data available on swarm in which inculdes several files, this tool helps you organize it in a comprehensible way.
+If you want to show your set of data available on Swarm, this tool helps you organize it in a comprehensible way.
 
 ```bash
 python swarmsync.py [xyz.json] [footer.txt]
@@ -162,17 +172,18 @@ python swarmsync.py [xyz.json] [footer.txt]
 
 ### Features
 
-- `footer.txt`: after adding the .json fifle, any txt format file can be added to be the footer <br>
-- `thumbnail.png`: in the working directory if there's a thumbnail with this specific name, it will be added to the html as full size header
+- `footer.txt`: After adding the JSON file, any text file can be added as the footer. <br>
+- `thumbnail.png`: If a file named thumbnail.png is in the working directory, it will be added to the HTML as a full-size header.
 
 - It will print the exact total size of all the data in megabytes, which can be downloaded.
 
-- The output file name is the same to the .json it was created from
+- The output file name matches the JSON file it was created from.
 
 ### Example
 
 ```bash
-➜ python generate_html.py Stack-Exchange-Kiwix.bzz.json
+python3 generate_html.py Stack-Exchange-Kiwix.bzz.json footer.txt
+
 Stack-Exchange-Kiwix.bzz.html file has been generated successfully.
 Total size of files: 330160.76 MB
 ```
