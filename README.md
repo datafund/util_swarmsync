@@ -167,7 +167,7 @@ Swarmsync allows you to configure additional options by modifying the script. Th
 If you want to show your set of data available on Swarm, this tool helps you organize it in a comprehensible way.
 
 ```bash
-python swarmsync.py [xyz.json] [footer.txt]
+python generate_html.py [anything.json] [footer.txt]
 ```
 
 ### Features
